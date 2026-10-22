@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f6f4ef">
+    <title>Parleo</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
+  </head>
+  <body>
+    <section id="login-view" class="login-view" aria-labelledby="login-title">
+      <div class="login-card">
+        <a class="brand login-brand" href="#" aria-label="Parleo, inicio">
+          <span class="brand-mark" aria-hidden="true">P</span>
+          <span class="brand-copy">
+            <span>Parleo</span>
+            <span class="brand-tagline">Adquirir, Practicar, Ajustar</span>
+          </span>
+        </a>
+        <div class="login-heading">
+          <div class="eyebrow"><span></span> BONJOUR, BIENVENUE</div>
+          <h1 id="login-title">Tu viaje al francés<br><span>comienza aquí.</span></h1>
+          <p class="intro">Inicia sesión o crea una cuenta para continuar aprendiendo.</p>
+        </div>
+        <form id="login-form" class="login-form">
+          <label class="form-field" for="login-email">
+            <span>Correo electrónico</span>
+            <input id="login-email" name="email" type="email" autocomplete="username" placeholder="tu@correo.com" required>
+          </label>
+          <label class="form-field" for="login-password">
+            <span>Contraseña</span>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="Tu contraseña" required>
+          </label>
+          <p id="login-status" class="form-status" role="status" aria-live="polite"></p>
+          <div class="login-actions">
+            <button class="generate-button" type="submit"><span>Iniciar Sesión</span><span aria-hidden="true">→</span></button>
+            <button id="register-button" class="register-button" type="button">Registrarse</button>
+          </div>
+        </form>
+        <form id="registration-form" class="login-form registration-form" hidden>
+          <div class="registration-heading">
+            <h2>Crea tu perfil</h2>
+            <p>Cuenta vinculada a <strong id="registration-email"></strong>. Se usará la contraseña escrita en el login.</p>
+          </div>
+          <label class="form-field" for="registration-name">
+            <span>Nombre de perfil</span>
+            <input id="registration-name" name="profileName" type="text" maxlength="60" autocomplete="name" required>
+          </label>
+          <label class="form-field" for="registration-level">
+            <span>Nivel actual</span>
+            <select id="registration-level" name="level">
+              <option value="A1">A1</option>
+              <option value="A2">A2</option>
+              <option value="B1">B1</option>
+              <option value="B2">B2</option>
+              <option value="C1">C1</option>
+            </select>
+          </label>
+          <fieldset class="avatar-picker">
+            <legend>Elige tu avatar</legend>
+            <div id="registration-avatar-grid" class="avatar-grid" role="radiogroup" aria-label="Avatares disponibles"></div>
+          </fieldset>
+          <p id="registration-status" class="form-status" role="status" aria-live="polite"></p>
+          <div class="login-actions">
+            <button class="generate-button" type="submit"><span>Crear perfil</span><span aria-hidden="true">→</span></button>
+            <button id="cancel-registration-button" class="register-button" type="button">Volver al inicio</button>
+          </div>
+        </form>
+        <p class="login-note">Una experiencia de aprendizaje hecha a tu medida.</p>
+      </div>
+    </section>
+
+    <main id="application" class="page" hidden>
+      <header class="site-header">
+        <a class="brand" href="#" aria-label="Parleo, inicio">
+          <img id="header-avatar" class="header-avatar" alt="">
+          <span class="brand-copy">
+            <span>Parleo</span>
+            <span class="brand-tagline">Adquirir, Practicar, Ajustar</span>
+          </span>
+        </a>
+        <div class="header-actions">
+          <span class="level-badge"><span aria-hidden="true">✳</span> ATELIER D'HISTOIRES</span>
+          <button id="header-logout-button" class="logout-button header-logout-button" type="button" aria-label="Cerrar sesión">↪ <span>Salir</span></button>
+          <span id="header-logout-status" class="header-logout-status" role="status" aria-live="polite"></span>
+        </div>
+      </header>
+
+      <nav id="primary-nav" class="primary-nav" role="tablist" aria-label="Navegación principal">
+        <button class="primary-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="main-view" data-view="main-view">Historias</button>
+        <button class="primary-tab" type="button" role="tab" aria-selected="false" aria-controls="build-view" data-view="build-view">Construir</button>
+        <button class="primary-tab" type="button" role="tab" aria-selected="false" aria-controls="vault-view" data-view="vault-view">Baúl</button>
+        <button class="primary-tab" type="button" role="tab" aria-selected="false" aria-controls="julie-view" data-view="julie-view">Agente Julie</button>
+        <button class="primary-tab" type="button" role="tab" aria-selected="false" aria-controls="progress-view" data-view="progress-view">Progreso</button>
+        <button class="primary-tab" type="button" role="tab" aria-selected="false" aria-controls="profile-view" data-view="profile-view">Perfil</button>
+      </nav>
+
+      <section id="main-view" class="lesson" aria-labelledby="page-title">
+        <div class="eyebrow"><span></span> TU ESPACIO CREATIVO</div>
+        <h1 id="page-title">Historias para<br><span>aprender.</span></h1>
+        <p class="intro">Crea, guarda y escucha tus historias en francés.</p>
+
+        <nav class="main-tabs" role="tablist" aria-label="Secciones principales">
+          <button id="create-tab" class="main-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="create-panel">Crear Historia</button>
+          <button id="library-tab" class="main-tab" type="button" role="tab" aria-selected="false" aria-controls="library-panel">Mis Historias <span id="story-count" class="tab-count">0</span></button>
+        </nav>
+
+        <section id="create-panel" class="tab-panel" role="tabpanel" aria-labelledby="create-tab">
+          <form id="story-form" class="story-form">
+            <label class="form-field" for="story-theme">
+              <span>Tema</span>
+              <input id="story-theme" name="theme" type="text" placeholder="Ej. Una tarde en París" required maxlength="80">
+            </label>
+            <label class="form-field" for="story-level">
+              <span>Nivel de francés</span>
+              <select id="story-level" name="level">
+                <option value="Principiante">Principiante</option>
+                <option value="Intermedio">Intermedio</option>
+                <option value="Avanzado">Avanzado</option>
+              </select>
+            </label>
+            <label class="form-field" for="story-type">
+              <span>Tipo de historia</span>
+              <select id="story-type" name="type">
+                <option value="Narración">Narración</option>
+                <option value="Diálogo">Diálogo</option>
+                <option value="Situación cotidiana">Situación cotidiana</option>
+                <option value="Noticia">Noticia</option>
+              </select>
+            </label>
+            <button class="generate-button" type="submit">
+              <span>Generar Historia</span>
+              <span aria-hidden="true">→</span>
+            </button>
+          </form>
+          <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
+        </section>
+
+        <section id="library-panel" class="tab-panel" role="tabpanel" aria-labelledby="library-tab" hidden>
+          <div class="library-heading">
+            <div>
+              <h2>Tu biblioteca</h2>
+              <p>Abre una historia para leerla o escucharla.</p>
+            </div>
+          </div>
+          <p id="library-status" class="form-status" role="status" aria-live="polite"></p>
+          <ul id="story-list" class="story-list"></ul>
+        </section>
+
+        <footer class="lesson-footer"><span aria-hidden="true">✦</span> UN PETIT PAS CHAQUE JOUR</footer>
+      </section>
+
+      <section id="build-view" class="lesson feature-view" aria-labelledby="build-title" role="tabpanel" hidden>
+        <div class="eyebrow"><span></span> TU ESPACIO CREATIVO</div>
+        <h1 id="build-title">Construye una<br><span>historia.</span></h1>
+        <p class="intro">Escribe un resumen para dar forma a tu próxima historia.</p>
+        <p id="build-story-context" class="build-story-context"></p>
+        <div class="feature-card">
+          <label class="form-field" for="student-summary">
+            <span>Resumen de tu historia</span>
+            <textarea id="student-summary" rows="7" placeholder="Escribe aquí tus ideas..."></textarea>
+          </label>
+          <div class="build-actions">
+            <button id="evaluate-summary-button" class="build-action-button is-primary" type="button">
+              Evaluar mi resumen
+            </button>
+            <button id="ask-julie-button" class="build-action-button is-secondary" type="button">
+              Pedir ayuda a Julie
+            </button>
+          </div>
+          <div id="build-feedback" class="build-feedback" role="status" aria-live="polite" hidden>
+            <h2 id="build-feedback-title"></h2>
+            <p id="build-feedback-text"></p>
+          </div>
+        </div>
+      </section>
+
+      <section id="vault-view" class="lesson feature-view" aria-labelledby="vault-title" role="tabpanel" hidden>
+        <div class="eyebrow"><span></span> TU COLECCIÓN</div>
+        <h1 id="vault-title">Tu <span>Baúl.</span></h1>
+        <p class="intro">Tus tarjetas de vocabulario, listas para repasar.</p>
+        <div class="vault-settings">
+          <span>Velocidad del audio</span>
+          <div id="vault-speed-controls" class="vault-global-speeds" role="group" aria-label="Velocidad global del Baúl">
+            <button class="vault-global-speed is-selected" type="button" data-rate="0.75" aria-pressed="true">0.75x</button>
+            <button class="vault-global-speed" type="button" data-rate="0.85" aria-pressed="false">0.85x</button>
+            <button class="vault-global-speed" type="button" data-rate="1" aria-pressed="false">1.0x</button>
+          </div>
+        </div>
+        <p id="vault-status" class="form-status" role="status" aria-live="polite"></p>
+        <ul id="vault-list" class="vault-list"></ul>
+      </section>
+
+      <section id="julie-view" class="lesson feature-view" aria-labelledby="julie-title" role="tabpanel" hidden>
+        <div class="eyebrow"><span></span> TU COMPAÑERA DE FRANCÉS</div>
+        <h1 id="julie-title">Agente <span>Julie.</span></h1>
+        <div class="feature-card chat-card">
+          <div id="julie-chat-history" class="julie-chat-history" role="log" aria-live="polite" aria-relevant="additions">
+            <p class="julie-chat-bubble is-julie">Bonjour ! Je suis Julie. De quoi veux-tu parler aujourd’hui ?</p>
+          </div>
+          <p id="julie-chat-status" class="julie-chat-status" role="status" aria-live="polite"></p>
+          <form id="julie-chat-form" class="julie-chat-form">
+            <label class="form-field" for="julie-message">
+              <span>Escribe o dicta tu mensaje en francés</span>
+              <textarea id="julie-message" name="message" rows="3" placeholder="Bonjour, Julie..." required></textarea>
+            </label>
+            <div class="julie-chat-actions">
+              <button id="julie-send-button" class="generate-button" type="submit">Enviar</button>
+              <button id="julie-microphone-button" class="julie-microphone-button" type="button" aria-label="Hablar en francés" aria-pressed="false">
+                <svg class="julie-microphone-icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <rect x="9" y="3" width="6" height="12" rx="3" fill="currentColor"/>
+                  <path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3m-4 0h8" fill="none" stroke="currentColor" stroke-linecap="round" stroke-width="1.8"/>
+                </svg>
+                <span id="julie-microphone-label">Hablar</span>
+              </button>
+            </div>
+            <div class="julie-speed-setting">
+              <span>Velocidad de Julie</span>
+              <div id="julie-speed-controls" class="julie-speed-controls" role="group" aria-label="Velocidad de la voz de Julie">
+                <button class="julie-speed-button" type="button" data-rate="0.7" aria-pressed="false">0.70x</button>
+                <button class="julie-speed-button is-selected" type="button" data-rate="0.85" aria-pressed="true">0.85x</button>
+                <button class="julie-speed-button" type="button" data-rate="1" aria-pressed="false">1.0x</button>
+              </div>
+            </div>
+          </form>
+        </div>
+      </section>
+
+      <section id="progress-view" class="lesson feature-view" aria-labelledby="progress-title" role="tabpanel" hidden>
+        <div class="eyebrow"><span></span> CADA PASO CUENTA</div>
+        <h1 id="progress-title">Tu <span>progreso.</span></h1>
+        <p id="progress-status" class="form-status" role="status" aria-live="polite"></p>
+        <div class="feature-card progress-card">
+          <div class="progress-item">
+            <div class="progress-label">
+              <span>Historias leídas</span>
+              <span id="progress-stories-count">0 de 10</span>
+            </div>
+            <div id="progress-stories-track" class="progress-track" role="progressbar" aria-label="Objetivo de historias leídas" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0">
+              <span id="progress-stories-bar" style="width: 0%"></span>
+            </div>
+            <p id="progress-stories-caption" class="progress-caption">Has leído 0 historias.</p>
+          </div>
+          <div class="progress-item">
+            <div class="progress-label">
+              <span>Vocabulario guardado</span>
+              <span id="progress-vocabulary-count">0</span>
+            </div>
+            <p id="progress-vocabulary-caption" class="progress-caption">Has aprendido 0 palabras.</p>
+          </div>
+          <div class="progress-item">
+            <div class="progress-label">
+              <span>Errores corregidos</span>
+              <span id="progress-corrections-count">0</span>
+            </div>
+            <p id="progress-corrections-caption" class="progress-caption">Has corregido 0 errores.</p>
+          </div>
+        </div>
+        <div class="feature-card progress-improvements">
+          <h2>Tus áreas de mejora</h2>
+          <p id="progress-improvements-text" class="progress-improvements-text" role="status" aria-live="polite"></p>
+        </div>
+      </section>
+
+      <section id="profile-view" class="lesson feature-view" aria-labelledby="profile-title" role="tabpanel" hidden>
+        <div class="eyebrow"><span></span> TU ESPACIO PERSONAL</div>
+        <h1 id="profile-title">Tu <span>perfil.</span></h1>
+        <div class="feature-card profile-card">
+          <img id="profile-avatar" class="profile-avatar" alt="Avatar del perfil">
+          <button id="change-avatar-button" class="register-button change-avatar-button" type="button" aria-expanded="false" aria-controls="profile-avatar-grid">Cambiar Avatar</button>
+          <fieldset id="profile-avatar-picker" class="avatar-picker profile-avatar-picker" hidden>
+            <legend>Elige tu nuevo avatar</legend>
+            <div id="profile-avatar-grid" class="avatar-grid" role="radiogroup" aria-label="Avatares disponibles"></div>
+          </fieldset>
+          <div class="profile-summary">
+            <h2 id="profile-name">Nombre del estudiante</h2>
+            <p id="profile-level-summary">Nivel actual: A1</p>
+          </div>
+          <form id="profile-form" class="profile-form">
+            <label class="form-field" for="profile-name-input">
+              <span>Nombre de perfil</span>
+              <input id="profile-name-input" name="profileName" type="text" maxlength="60" required>
+            </label>
+            <label class="form-field" for="profile-level">
+              <span>Nivel</span>
+              <select id="profile-level" name="level">
+                <option value="A1">A1</option>
+                <option value="A2">A2</option>
+                <option value="B1">B1</option>
+                <option value="B2">B2</option>
+                <option value="C1">C1</option>
+              </select>
+            </label>
+            <label class="form-field" for="exercise-difficulty">
+              <span>Dificultad de los ejercicios</span>
+              <select id="exercise-difficulty" name="difficulty">
+                <option value="Fácil">Fácil</option>
+                <option value="Normal">Normal</option>
+                <option value="Difícil">Difícil</option>
+              </select>
+            </label>
+            <p id="profile-status" class="form-status" role="status" aria-live="polite"></p>
+            <button class="generate-button" type="submit"><span>Guardar Cambios</span><span aria-hidden="true">→</span></button>
+          </form>
+          <button id="logout-button" class="logout-button" type="button">Cerrar Sesión</button>
+        </div>
+      </section>
+
+      <section id="reader-view" class="lesson reader-view" aria-labelledby="reader-title" hidden>
+        <button id="back-button" class="back-button" type="button"><span aria-hidden="true">←</span> Volver</button>
+        <div class="eyebrow reader-eyebrow"><span></span> TU HISTORIA</div>
+        <h1 id="reader-title" class="reader-title"></h1>
+        <p id="reader-summary" class="intro reader-summary"></p>
+
+        <nav class="reader-tabs" role="tablist" aria-label="Modo de lectura">
+          <button id="audio-tab" class="reader-tab" type="button" role="tab" aria-selected="false" aria-controls="audio-panel">Escuchar (Audio)</button>
+          <button id="reading-tab" class="reader-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="reading-panel">Escuchar con Lectura</button>
+          <button id="questions-tab" class="reader-tab" type="button" role="tab" aria-selected="false" aria-controls="questions-panel">Preguntas</button>
+        </nav>
+
+        <section id="audio-panel" class="reader-panel" role="tabpanel" aria-labelledby="audio-tab" hidden>
+          <div class="audio-card">
+            <span class="audio-card-icon" aria-hidden="true">♫</span>
+            <h2>Escucha y practica</h2>
+            <p>Concéntrate en el sonido y el ritmo del francés.</p>
+            <div class="speed-controls" role="group" aria-label="Velocidad de lectura">
+              <button class="speed-button" type="button" data-rate="0.7" aria-pressed="false">0.70<span>x</span></button>
+              <button class="speed-button is-selected" type="button" data-rate="0.85" aria-pressed="true">0.85<span>x</span></button>
+              <button class="speed-button" type="button" data-rate="1" aria-pressed="false">1.0<span>x</span></button>
+            </div>
+            <button class="listen-button" type="button">
+              <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/>
+              </svg>
+              <span>Écouter</span>
+            </button>
+            <p class="speech-status" role="status" aria-live="polite"></p>
+          </div>
+        </section>
+
+        <section id="reading-panel" class="reader-panel" role="tabpanel" aria-labelledby="reading-tab">
+          <article class="story-card">
+            <div class="card-heading">
+              <span class="language-label"><span class="flag" aria-hidden="true">🇫🇷</span> EN FRANÇAIS</span>
+              <span id="word-count" class="reading-time"></span>
+            </div>
+            <p id="french-story" class="french-story"></p>
+            <button id="translation-toggle" class="translation-toggle" type="button" aria-expanded="false" aria-controls="spanish-translation">Mostrar Traducción</button>
+            <div id="translation-container" class="translation" hidden>
+              <div class="translation-heading">
+                <span class="language-label"><span class="flag" aria-hidden="true">🇪🇸</span> EN ESPAÑOL</span>
+              </div>
+              <p id="spanish-translation"></p>
+            </div>
+          </article>
+          <section class="listening" aria-labelledby="listening-title">
+            <div class="listening-copy">
+              <h2 id="listening-title">Escucha mientras lees</h2>
+              <p>Elige la velocidad que te resulte más cómoda.</p>
+            </div>
+            <div class="speed-controls" role="group" aria-label="Velocidad de lectura">
+              <button class="speed-button" type="button" data-rate="0.7" aria-pressed="false">0.70<span>x</span></button>
+              <button class="speed-button is-selected" type="button" data-rate="0.85" aria-pressed="true">0.85<span>x</span></button>
+              <button class="speed-button" type="button" data-rate="1" aria-pressed="false">1.0<span>x</span></button>
+            </div>
+            <button class="listen-button" type="button">
+              <svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/>
+              </svg>
+              <span>Écouter</span>
+            </button>
+            <p class="speech-status" role="status" aria-live="polite"></p>
+          </section>
+        </section>
+
+        <section id="questions-panel" class="reader-panel questions-panel" role="tabpanel" aria-labelledby="questions-tab" hidden>
+          <div class="questions-intro">
+            <h2>Comprueba lo que entendiste</h2>
+            <p id="question-instructions">Responde por escrito o dicta tu respuesta en francés.</p>
+          </div>
+          <p id="question-load-status" class="question-load-status" role="status" aria-live="polite"></p>
+          <ol id="question-list" class="question-list"></ol>
+        </section>
+
+        <footer class="lesson-footer"><span aria-hidden="true">✦</span> UN PETIT PAS CHAQUE JOUR</footer>
+      </section>
+    </main>
+
+    <dialog id="word-modal" class="word-modal" aria-labelledby="modal-word">
+      <div class="modal-content">
+        <button id="modal-close" class="modal-close" type="button" aria-label="Cerrar">×</button>
+        <span class="modal-eyebrow">VOCABULARIO</span>
+        <h2 id="modal-word"></h2>
+        <p id="modal-meaning"></p>
+        <p id="modal-save-status" class="modal-save-status" role="status" aria-live="polite"></p>
+        <button id="save-word-button" class="save-vault-button" type="button" disabled>Guardar en Baúl</button>
+      </div>
+    </dialog>
+  </body>
+</html>
