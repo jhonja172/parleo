@@ -4,9 +4,6 @@ const SUPABASE_KEY = "sb_publishable_3sjXn1GV4ayWLGgmpuqdkQ_dCRj6sIo";
 const supabaseClient =
   window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY) ?? null;
 const STORAGE_KEY = "parleoStories.v1";
-const USERS_STORAGE_KEY = "parleoUsers.v1";
-const SESSION_STORAGE_KEY = "parleoSession.v1";
-const LEGACY_USER_STORAGE_KEY = "parleoUser.v1";
 const VAULT_STORAGE_KEY = "parleoVault.v1";
 const VAULT_SPEED_STORAGE_KEY = "parleoVaultSpeed.v1";
 const READ_STORIES_STORAGE_KEY = "parleoReadStories.v1";
@@ -222,47 +219,48 @@ async function cargarProgreso() {
   return data;
 }
 
-function isStoredUser(value) {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    typeof value.id === "string" &&
-    typeof value.email === "string" &&
-    typeof value.password === "string" &&
-    typeof value.name === "string" &&
-    typeof value.level === "string" &&
-    typeof value.difficulty === "string" &&
-    (value.avatar === undefined || typeof value.avatar === "string")
-  );
-}
+async function loadAuthenticatedProfile(authUser) {
+  const metadata = authUser.user_metadata || {};
+  const emailName = (authUser.email || "")
+    .split("@")[0]
+    .replace(/[._-]+/g, " ")
+    .trim();
+  currentUser = {
+    id: authUser.id,
+    email: authUser.email || "",
+    name:
+      typeof metadata.name === "string" && metadata.name.trim()
+        ? metadata.name.trim()
+        : emailName || "Estudiante",
+    avatar: typeof metadata.avatar === "string" ? metadata.avatar : "",
+    level: typeof metadata.level === "string" ? metadata.level : "A1",
+    difficulty:
+      typeof metadata.difficulty === "string" ? metadata.difficulty : "Normal",
+  };
 
-function isLegacyStoredUser(value) {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    typeof value.id === "string" &&
-    typeof value.email === "string" &&
-    typeof value.name === "string" &&
-    typeof value.level === "string" &&
-    typeof value.difficulty === "string"
-  );
-}
-
-function loadUsers() {
-  const storedUsers = window.localStorage.getItem(USERS_STORAGE_KEY);
-  if (storedUsers === null) {
-    return [];
+  const profile = await cargarProgreso();
+  if (profile) {
+    currentUser = {
+      ...currentUser,
+      name: typeof profile.name === "string" ? profile.name : currentUser.name,
+      avatar:
+        typeof profile.avatar === "string" ? profile.avatar : currentUser.avatar,
+      level: typeof profile.level === "string" ? profile.level : currentUser.level,
+      difficulty:
+        typeof profile.difficulty === "string"
+          ? profile.difficulty
+          : currentUser.difficulty,
+    };
+  } else {
+    await guardarProgreso({
+      name: currentUser.name,
+      avatar: currentUser.avatar,
+      level: currentUser.level,
+      difficulty: currentUser.difficulty,
+    });
   }
 
-  const parsedUsers = JSON.parse(storedUsers);
-  if (!Array.isArray(parsedUsers) || !parsedUsers.every(isStoredUser)) {
-    throw new Error("La lista de usuarios guardada tiene un formato no válido.");
-  }
-  return parsedUsers;
-}
-
-function saveUsers(users) {
-  window.localStorage.setItem(USERS_STORAGE_KEY, JSON.stringify(users));
+  return currentUser;
 }
 
 function userStoriesStorageKey(userId) {
@@ -292,49 +290,6 @@ function createUserDataBoxes(userId) {
   window.localStorage.setItem(`${VAULT_SPEED_STORAGE_KEY}.${userId}`, "0.75");
 }
 
-function loadSessionUser() {
-  try {
-    const users = loadUsers();
-    let sessionUserId = window.localStorage.getItem(SESSION_STORAGE_KEY);
-
-    if (sessionUserId === null) {
-      const legacyValue = window.localStorage.getItem(LEGACY_USER_STORAGE_KEY);
-      if (legacyValue === null) {
-        return null;
-      }
-
-      const legacyUser = JSON.parse(legacyValue);
-      if (!isLegacyStoredUser(legacyUser)) {
-        throw new Error("El perfil anterior no tiene el formato esperado.");
-      }
-
-      let migratedUser = users.find(
-        (user) =>
-          user.id === legacyUser.id ||
-          user.email === legacyUser.email.trim().toLocaleLowerCase("es"),
-      );
-      if (!migratedUser) {
-        migratedUser = {
-          ...legacyUser,
-          email: legacyUser.email.trim().toLocaleLowerCase("es"),
-          password: "123456",
-        };
-        users.push(migratedUser);
-        saveUsers(users);
-      }
-
-      sessionUserId = migratedUser.id;
-      window.localStorage.setItem(SESSION_STORAGE_KEY, sessionUserId);
-      window.localStorage.removeItem(LEGACY_USER_STORAGE_KEY);
-    }
-
-    return users.find((user) => user.id === sessionUserId) || null;
-  } catch (error) {
-    loginStatus.textContent = `No se pudo cargar el perfil: ${error.message}`;
-    return null;
-  }
-}
-
 function showApplication(user) {
   currentUser = user;
   storageError = "";
@@ -347,22 +302,35 @@ function showApplication(user) {
   renderStories();
 }
 
-function authenticate() {
+async function authenticate() {
   loginStatus.textContent = "";
   if (!loginForm.reportValidity()) {
+    return;
+  }
+  if (!supabaseClient) {
+    loginStatus.textContent = "No se pudo conectar con el servicio de autenticación.";
     return;
   }
 
   try {
     const email = loginEmail.value.trim().toLocaleLowerCase("es");
     const password = loginPassword.value;
-    const user = loadUsers().find((account) => account.email === email);
-    if (!user || user.password !== password) {
-      loginStatus.textContent = "El correo o la contraseña no corresponden a una cuenta registrada.";
-      return;
+    const { data, error } = await supabaseClient.auth.signInWithPassword({
+      email,
+      password,
+    });
+    if (error) {
+      throw error;
+    }
+    if (!data.user) {
+      throw new Error("Supabase no devolvió el usuario autenticado.");
     }
 
-    window.localStorage.setItem(SESSION_STORAGE_KEY, user.id);
+    const user = await loadAuthenticatedProfile(data.user);
+    if (!user) {
+      loginStatus.textContent = "No se pudo cargar el perfil de la cuenta.";
+      return;
+    }
     showApplication(user);
   } catch (error) {
     loginStatus.textContent = `No se pudo iniciar sesión: ${error.message}`;
@@ -397,9 +365,14 @@ function updateRegistrationAvatarSelection(avatarUrl) {
   );
 }
 
-function registerUser(event) {
+async function registerUser(event) {
   event.preventDefault();
   registrationStatus.textContent = "";
+  if (!supabaseClient) {
+    registrationStatus.textContent =
+      "No se pudo conectar con el servicio de autenticación.";
+    return;
+  }
 
   if (!loginEmail.checkValidity() || !loginEmail.value.trim() || !loginPassword.value) {
     registrationStatus.textContent =
@@ -415,36 +388,63 @@ function registerUser(event) {
 
   try {
     const email = loginEmail.value.trim().toLocaleLowerCase("es");
-    const users = loadUsers();
-    if (users.some((user) => user.email === email)) {
-      registrationStatus.textContent =
-        "Ya existe una cuenta con este correo. Vuelve al login o usa otro correo.";
-      return;
-    }
-
-    const user = {
-      id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+    const { data, error } = await supabaseClient.auth.signUp({
       email,
       password: loginPassword.value,
+      options: {
+        data: {
+          name,
+          avatar: selectedRegistrationAvatar,
+          level: registrationLevel.value,
+          difficulty: "Normal",
+        },
+      },
+    });
+    if (error) {
+      throw error;
+    }
+
+    if (!data.user) {
+      throw new Error("Supabase no devolvió la cuenta creada.");
+    }
+
+    currentUser = {
+      id: data.user.id,
+      email: data.user.email || email,
       name,
+      avatar: selectedRegistrationAvatar,
       level: registrationLevel.value,
       difficulty: "Normal",
-      avatar: selectedRegistrationAvatar,
     };
+    createUserDataBoxes(currentUser.id);
 
-    createUserDataBoxes(user.id);
-    saveUsers([...users, user]);
-    try {
-      window.localStorage.setItem(SESSION_STORAGE_KEY, user.id);
-    } catch (error) {
+    if (!data.session) {
+      currentUser = null;
       registrationStatus.textContent =
-        `La cuenta se creó, pero no se pudo iniciar la sesión: ${error.message}`;
+        "La cuenta se creó. Confirma tu correo electrónico y luego inicia sesión.";
       return;
     }
+
+    try {
+      await guardarProgreso({
+        name,
+        avatar: selectedRegistrationAvatar,
+        level: registrationLevel.value,
+        difficulty: "Normal",
+      });
+    } catch (profileError) {
+      console.error("No se pudo guardar el perfil en Supabase:", profileError);
+      showApplication(currentUser);
+      setPrimaryView("profile-view");
+      profileStatus.textContent =
+        `La cuenta se creó, pero no se pudo guardar el perfil: ${profileError.message}`;
+      return;
+    }
+
     registrationForm.reset();
-    showApplication(user);
+    showApplication(currentUser);
   } catch (error) {
-    registrationStatus.textContent = `No se pudo crear el perfil: ${error.message}`;
+    registrationStatus.textContent = `No se pudo crear la cuenta: ${error.message}`;
   }
 }
 
@@ -494,22 +494,20 @@ function renderHeaderAvatar(user) {
   headerAvatar.alt = `Avatar de ${user.name}`;
 }
 
-function saveProfileAvatar(avatarUrl) {
+async function saveProfileAvatar(avatarUrl) {
   if (!currentUser || !AVATAR_OPTIONS.some((avatar) => avatar.url === avatarUrl)) {
     profileStatus.textContent = "Selecciona un avatar disponible.";
     return;
   }
 
   try {
-    const users = loadUsers();
-    const userIndex = users.findIndex((user) => user.id === currentUser.id);
-    if (userIndex === -1) {
-      throw new Error("El usuario actual ya no existe en la lista de cuentas.");
-    }
-
     const updatedUser = { ...currentUser, avatar: avatarUrl };
-    users[userIndex] = updatedUser;
-    saveUsers(users);
+    await guardarProgreso({
+      name: updatedUser.name,
+      avatar: updatedUser.avatar,
+      level: updatedUser.level,
+      difficulty: updatedUser.difficulty,
+    });
     currentUser = updatedUser;
     profileAvatar.src = avatarUrl;
     profileAvatar.alt = `Avatar de ${updatedUser.name}`;
@@ -2009,15 +2007,35 @@ function speakCurrentStory() {
   window.speechSynthesis.speak(utterance);
 }
 
-currentUser = loadSessionUser();
-if (currentUser) {
-  showApplication(currentUser);
-} else {
-  stories = [];
-  renderStories();
+async function initializeAuthentication() {
   application.hidden = true;
   loginView.hidden = false;
+  stories = [];
+  renderStories();
+
+  if (!supabaseClient) {
+    loginStatus.textContent = "No se pudo conectar con el servicio de autenticación.";
+    return;
+  }
+
+  try {
+    const { data, error } = await supabaseClient.auth.getSession();
+    if (error) {
+      throw error;
+    }
+    if (!data.session?.user) {
+      return;
+    }
+
+    const user = await loadAuthenticatedProfile(data.session.user);
+    showApplication(user);
+  } catch (error) {
+    currentUser = null;
+    loginStatus.textContent = `No se pudo restaurar la sesión: ${error.message}`;
+  }
 }
+
+void initializeAuthentication();
 
 loginForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -2145,7 +2163,7 @@ storyForm.addEventListener("submit", (event) => {
   renderStories();
 });
 
-profileForm.addEventListener("submit", (event) => {
+profileForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   profileStatus.textContent = "";
 
@@ -2171,13 +2189,12 @@ profileForm.addEventListener("submit", (event) => {
   };
 
   try {
-    const users = loadUsers();
-    const userIndex = users.findIndex((user) => user.id === savedUser.id);
-    if (userIndex === -1) {
-      throw new Error("El usuario actual ya no existe en la lista de cuentas.");
-    }
-    users[userIndex] = updatedUser;
-    saveUsers(users);
+    await guardarProgreso({
+      name: updatedUser.name,
+      avatar: updatedUser.avatar,
+      level: updatedUser.level,
+      difficulty: updatedUser.difficulty,
+    });
     currentUser = updatedUser;
     renderProfile(updatedUser);
     profileStatus.textContent = "Cambios guardados correctamente.";
@@ -2186,9 +2203,15 @@ profileForm.addEventListener("submit", (event) => {
   }
 });
 
-function logout(statusElement) {
+async function logout(statusElement) {
   try {
-    window.localStorage.removeItem(SESSION_STORAGE_KEY);
+    if (!supabaseClient) {
+      throw new Error("El cliente de Supabase no está disponible.");
+    }
+    const { error } = await supabaseClient.auth.signOut();
+    if (error) {
+      throw error;
+    }
     window.location.reload();
   } catch (error) {
     statusElement.textContent = `No se pudo cerrar la sesión: ${error.message}`;
