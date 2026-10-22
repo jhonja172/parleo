@@ -2190,6 +2190,34 @@ h1 span {
   }
 }
 
+@media (max-width: 768px) {
+  .site-header {
+    height: 66px;
+  }
+
+  .primary-nav {
+    margin-top: 8px;
+  }
+
+  .lesson {
+    padding-top: 36px;
+    padding-bottom: 22px;
+  }
+
+  .reader-view {
+    padding-top: 24px;
+  }
+
+  .main-tabs {
+    margin-top: 20px;
+    margin-bottom: 12px;
+  }
+
+  .reader-tabs {
+    margin-bottom: 10px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

@@ -1,4 +1,8 @@
 const GEMINI_ENDPOINT = "/api/gemini";
+const SUPABASE_URL = "https://ugmfpvvpvkylclesltyx.supabase.co";
+const SUPABASE_KEY = "sb_publishable_3sjXn1GV4ayWLGgmpuqdkQ_dCRj6sIo";
+const supabaseClient =
+  window.supabase?.createClient(SUPABASE_URL, SUPABASE_KEY) ?? null;
 const STORAGE_KEY = "parleoStories.v1";
 const USERS_STORAGE_KEY = "parleoUsers.v1";
 const SESSION_STORAGE_KEY = "parleoSession.v1";
@@ -177,6 +181,46 @@ let isJulieSpeaking = false;
 let isJulieReplyPending = false;
 let julieSelectedRate = 0.85;
 let julieDictationPending = false;
+
+async function guardarProgreso(datos) {
+  if (!currentUser) {
+    throw new Error("No hay un usuario activo para guardar el progreso.");
+  }
+  if (!supabaseClient) {
+    throw new Error("El cliente de Supabase no está disponible.");
+  }
+  if (datos === null || typeof datos !== "object" || Array.isArray(datos)) {
+    throw new Error("Los datos de progreso deben ser un objeto.");
+  }
+
+  const usuarioActual = currentUser;
+  const { error } = await supabaseClient
+    .from("user_progress")
+    .upsert({ ...datos, user_id: usuarioActual.id }, { onConflict: "user_id" });
+  if (error) {
+    throw new Error(`No se pudo guardar el progreso en Supabase: ${error.message}`);
+  }
+}
+
+async function cargarProgreso() {
+  if (!currentUser) {
+    throw new Error("No hay un usuario activo para cargar el progreso.");
+  }
+  if (!supabaseClient) {
+    throw new Error("El cliente de Supabase no está disponible.");
+  }
+
+  const usuarioActual = currentUser;
+  const { data, error } = await supabaseClient
+    .from("user_progress")
+    .select("*")
+    .eq("user_id", usuarioActual.id)
+    .maybeSingle();
+  if (error) {
+    throw new Error(`No se pudo cargar el progreso de Supabase: ${error.message}`);
+  }
+  return data;
+}
 
 function isStoredUser(value) {
   return (
