@@ -190,10 +190,40 @@ async function guardarProgreso(datos) {
     throw new Error("Los datos de progreso deben ser un objeto.");
   }
 
+  const allowedKeys = new Set(["perfil", "avatar", "difficulty"]);
+  const unexpectedKeys = Object.keys(datos).filter((key) => !allowedKeys.has(key));
+  if (unexpectedKeys.length > 0) {
+    throw new Error(
+      `Campos de progreso no admitidos: ${unexpectedKeys.join(", ")}.`,
+    );
+  }
+
   const usuarioActual = currentUser;
+  const readCollection = (key) => {
+    const storedValue = window.localStorage.getItem(key);
+    if (storedValue === null) {
+      return [];
+    }
+    const parsedValue = JSON.parse(storedValue);
+    if (!Array.isArray(parsedValue)) {
+      throw new Error(`Los datos guardados en ${key} no tienen un formato válido.`);
+    }
+    return parsedValue;
+  };
+  const payload = {
+    user_id: usuarioActual.id,
+    historias: readCollection(userStoriesStorageKey(usuarioActual.id)),
+    baul: readCollection(`${VAULT_STORAGE_KEY}.${usuarioActual.id}`),
+    perfil: datos.perfil || {
+      name: usuarioActual.name,
+      level: usuarioActual.level,
+    },
+    avatar: datos.avatar ?? usuarioActual.avatar ?? "",
+    difficulty: datos.difficulty ?? usuarioActual.difficulty ?? "Normal",
+  };
   const { error } = await supabaseClient
     .from("user_progress")
-    .upsert({ ...datos, user_id: usuarioActual.id }, { onConflict: "user_id" });
+    .upsert(payload, { onConflict: "user_id" });
   if (error) {
     throw new Error(`No se pudo guardar el progreso en Supabase: ${error.message}`);
   }
@@ -240,12 +270,22 @@ async function loadAuthenticatedProfile(authUser) {
 
   const profile = await cargarProgreso();
   if (profile) {
+    const savedProfile =
+      profile.perfil && typeof profile.perfil === "object"
+        ? profile.perfil
+        : {};
     currentUser = {
       ...currentUser,
-      name: typeof profile.name === "string" ? profile.name : currentUser.name,
+      name:
+        typeof savedProfile.name === "string"
+          ? savedProfile.name
+          : currentUser.name,
       avatar:
         typeof profile.avatar === "string" ? profile.avatar : currentUser.avatar,
-      level: typeof profile.level === "string" ? profile.level : currentUser.level,
+      level:
+        typeof savedProfile.level === "string"
+          ? savedProfile.level
+          : currentUser.level,
       difficulty:
         typeof profile.difficulty === "string"
           ? profile.difficulty
@@ -253,9 +293,11 @@ async function loadAuthenticatedProfile(authUser) {
     };
   } else {
     await guardarProgreso({
-      name: currentUser.name,
+      perfil: {
+        name: currentUser.name,
+        level: currentUser.level,
+      },
       avatar: currentUser.avatar,
-      level: currentUser.level,
       difficulty: currentUser.difficulty,
     });
   }
@@ -427,9 +469,11 @@ async function registerUser(event) {
 
     try {
       await guardarProgreso({
-        name,
+        perfil: {
+          name,
+          level: registrationLevel.value,
+        },
         avatar: selectedRegistrationAvatar,
-        level: registrationLevel.value,
         difficulty: "Normal",
       });
     } catch (profileError) {
@@ -503,9 +547,11 @@ async function saveProfileAvatar(avatarUrl) {
   try {
     const updatedUser = { ...currentUser, avatar: avatarUrl };
     await guardarProgreso({
-      name: updatedUser.name,
+      perfil: {
+        name: updatedUser.name,
+        level: updatedUser.level,
+      },
       avatar: updatedUser.avatar,
-      level: updatedUser.level,
       difficulty: updatedUser.difficulty,
     });
     currentUser = updatedUser;
@@ -2190,9 +2236,11 @@ profileForm.addEventListener("submit", async (event) => {
 
   try {
     await guardarProgreso({
-      name: updatedUser.name,
+      perfil: {
+        name: updatedUser.name,
+        level: updatedUser.level,
+      },
       avatar: updatedUser.avatar,
-      level: updatedUser.level,
       difficulty: updatedUser.difficulty,
     });
     currentUser = updatedUser;
