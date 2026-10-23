@@ -2845,55 +2845,47 @@ document.addEventListener("click", (e) => {
     }
   }
 });
-// --- PARCHE DEFINITIVO PARA ABRIR LA HISTORIA ---
+// --- PARCHE MAESTRO PARA ABRIR HISTORIAS ---
 document.addEventListener('click', (e) => {
-  // Buscamos si el clic fue en la lista de historias
-  const itemHistoria = e.target.closest('.story-list li');
+  // Buscamos la tarjeta de la historia (el <li>)
+  const storyCard = e.target.closest('.story-list li');
   
-  // Ignoramos si el clic fue en el botón de eliminar (la X)
-  if (itemHistoria && !e.target.closest('button')) {
-    e.preventDefault();
-    e.stopPropagation(); // Evitamos que otros eventos interfieran
+  // Si no es una tarjeta, o si el clic fue en el botón de eliminar (X), no hacemos nada
+  if (!storyCard || e.target.closest('button')) return;
 
-    // Estrategia 1: Si el elemento tiene data-id, buscar la historia
-    const storyId = itemHistoria.getAttribute('data-id') || itemHistoria.dataset.id;
+  e.preventDefault();
+  e.stopPropagation();
+
+  // 1. Obtener el título y el texto de la tarjeta
+  const titulo = storyCard.querySelector('h3')?.innerText || 'Historia';
+  // El texto completo está en el <p> o en un atributo oculto de la tarjeta
+  const textoCompleto = storyCard.getAttribute('data-texto') || storyCard.querySelector('p')?.innerText || "Texto de la historia no disponible";
+
+  // 2. Ocultar la vista principal y mostrar la de lectura
+  const mainView = document.getElementById('main-view');
+  const readerView = document.getElementById('reader-view');
+  
+  if (mainView && readerView) {
+    mainView.hidden = true;
+    readerView.hidden = false;
+
+    // 3. Rellenar los datos en la vista de lectura
+    document.getElementById('reader-title').innerText = titulo;
+    document.getElementById('reader-summary').innerText = `Nivel A1 · Narración`;
     
-    if (storyId && typeof openStory === 'function') {
-        // Intenta buscar en las variables globales más comunes
-        const historia = window.stories?.find(s => s.id == storyId) || 
-                         window.historias?.find(s => s.id == storyId) ||
-                         window.userStories?.find(s => s.id == storyId);
-        if (historia) {
-            openStory(historia);
-            return;
-        }
+    // 4. Poner el texto en el contenedor
+    const textoContainer = document.getElementById('historia-texto');
+    if (textoContainer) {
+      textoContainer.innerText = textoCompleto;
     }
 
-    // Estrategia 2 (A prueba de balas): 
-    // Si no encontramos el ID, simulamos que hacemos clic en la primera historia guardada
-    // o simplemente abrimos la vista de lectura forzando el evento de la app.
-    console.log("Forzando apertura de historia...");
-    
-    // Ocultamos la vista principal y mostramos la de lectura
-    const mainView = document.getElementById('main-view');
-    const readerView = document.getElementById('reader-view');
-    
-    if (mainView && readerView) {
-        mainView.hidden = true;
-        readerView.hidden = false;
-        
-        // Si la historia tiene el texto en el HTML, lo mostramos
-        const textoVisible = itemHistoria.querySelector('p')?.innerText || "Historia de prueba";
-        
-        // Simulamos que la app cargó una historia
-        if (typeof openStory === 'function') {
-            // Intentamos llamar a openStory con un objeto falso que tenga el texto
-            openStory({
-                id: storyId || 'temp',
-                texto: textoVisible,
-                titulo: itemHistoria.querySelector('h3')?.innerText || 'Historia'
-            });
-        }
+    // 5. (Opcional) Si la función openStory existe, la llamamos para que cargue las preguntas
+    if (typeof openStory === 'function') {
+      openStory({
+        id: 'temp',
+        titulo: titulo,
+        texto: textoCompleto
+      });
     }
   }
-}, true); // El 'true' hace que este evento se dispare antes que otros
+}, true);
