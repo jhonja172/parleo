@@ -175,6 +175,7 @@ let isSpeaking = false;
 let translationRequestId = 0;
 let currentUser = null;
 let pendingShortStoryRequest = null;
+let julieRecognitionFailed = false;
 let selectedRegistrationAvatar = AVATAR_OPTIONS[0].url;
 let activeVaultSpeech = null;
 let julieConversation = [];
@@ -1780,9 +1781,11 @@ function startJulieRecognition() {
   recognition.lang = "fr-FR";
   recognition.interimResults = true;
   recognition.maxAlternatives = 1;
+  julieRecognitionFailed = false;
   julieDictationPending = false;
   julieRecognition = recognition;
-  julieChatStatus.textContent = "Te escucho. Pulsa Enviar cuando termines.";
+  julieChatStatus.textContent =
+    "Escuchando… Puedes revisar el texto y pulsar Enviar cuando termines.";
   updateJulieControls();
 
   recognition.addEventListener("result", (event) => {
@@ -1797,19 +1800,23 @@ function startJulieRecognition() {
     julieDictationPending = julieMessage.value.length > 0;
   });
   recognition.addEventListener("error", (event) => {
-    if (event.error !== "aborted") {
-      julieChatStatus.textContent =
-        event.error === "not-allowed"
-          ? "No se concedió permiso para usar el micrófono."
-          : `No se pudo reconocer la voz: ${event.error}.`;
+    if (event.error === "aborted") {
+      return;
     }
+    julieRecognitionFailed = true;
+    julieChatStatus.textContent =
+      event.error === "not-allowed"
+        ? "No se pudo acceder al micrófono. Revisa los permisos del navegador."
+        : "No te he entendido bien. ¿Puedes repetirlo?";
   });
   recognition.addEventListener("end", () => {
     if (julieRecognition === recognition) {
       julieRecognition = null;
       updateJulieControls();
-      if (!isJulieSpeaking && !isJulieReplyPending) {
-        julieChatStatus.textContent = "Puedes revisar tu mensaje y pulsar Enviar.";
+      if (!julieRecognitionFailed && !isJulieSpeaking && !isJulieReplyPending) {
+        julieChatStatus.textContent = julieDictationPending
+          ? "Puedes revisar tu mensaje y pulsar Enviar."
+          : "No te he entendido bien. ¿Puedes repetirlo?";
       }
     }
   });
@@ -1818,8 +1825,10 @@ function startJulieRecognition() {
     recognition.start();
   } catch (error) {
     julieRecognition = null;
+    julieRecognitionFailed = true;
     updateJulieControls();
-    julieChatStatus.textContent = `No se pudo iniciar el micrófono: ${error.message}`;
+    julieChatStatus.textContent =
+      "No te he entendido bien. ¿Puedes repetirlo?";
   }
 }
 
