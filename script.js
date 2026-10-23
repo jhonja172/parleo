@@ -2845,23 +2845,27 @@ document.addEventListener("click", (e) => {
     }
   }
 });
-// --- PARCHE MAESTRO PARA ABRIR HISTORIAS ---
+// --- PARCHE DEFINITIVO (A PRUEBA DE BALAS) ---
 document.addEventListener('click', (e) => {
-  // Buscamos la tarjeta de la historia (el <li>)
-  const storyCard = e.target.closest('.story-list li');
+  // 1. Si el clic fue en la "X" de eliminar, no hacemos nada
+  if (e.target.closest('button')) return;
+
+  // 2. Buscamos el contenedor de la historia.
+  // En tu captura, la tarjeta blanca tiene el título y el texto.
+  // Buscamos el elemento más cercano que contenga el título (h3) o el texto (p).
+  const storyCard = e.target.closest('li, .story-card, .library-item, .story-list-item');
   
-  // Si no es una tarjeta, o si el clic fue en el botón de eliminar (X), no hacemos nada
-  if (!storyCard || e.target.closest('button')) return;
+  // Si no encontramos una tarjeta, salimos.
+  if (!storyCard) return;
 
   e.preventDefault();
   e.stopPropagation();
 
-  // 1. Obtener el título y el texto de la tarjeta
-  const titulo = storyCard.querySelector('h3')?.innerText || 'Historia';
-  // El texto completo está en el <p> o en un atributo oculto de la tarjeta
-  const textoCompleto = storyCard.getAttribute('data-texto') || storyCard.querySelector('p')?.innerText || "Texto de la historia no disponible";
+  // 3. Extraemos el título y el texto directamente de lo que se ve en pantalla
+  const titulo = storyCard.querySelector('h3')?.innerText || storyCard.querySelector('.story-title')?.innerText || "Historia";
+  const textoCompleto = storyCard.querySelector('p')?.innerText || "Texto no disponible";
 
-  // 2. Ocultar la vista principal y mostrar la de lectura
+  // 4. Ocultamos la vista principal y mostramos la de lectura
   const mainView = document.getElementById('main-view');
   const readerView = document.getElementById('reader-view');
   
@@ -2869,17 +2873,16 @@ document.addEventListener('click', (e) => {
     mainView.hidden = true;
     readerView.hidden = false;
 
-    // 3. Rellenar los datos en la vista de lectura
+    // 5. Rellenamos la vista de lectura
     document.getElementById('reader-title').innerText = titulo;
     document.getElementById('reader-summary').innerText = `Nivel A1 · Narración`;
     
-    // 4. Poner el texto en el contenedor
     const textoContainer = document.getElementById('historia-texto');
     if (textoContainer) {
       textoContainer.innerText = textoCompleto;
     }
 
-    // 5. (Opcional) Si la función openStory existe, la llamamos para que cargue las preguntas
+    // 6. Si la función openStory existe, la llamamos para que cargue las preguntas y la lógica
     if (typeof openStory === 'function') {
       openStory({
         id: 'temp',
@@ -2888,4 +2891,4 @@ document.addEventListener('click', (e) => {
       });
     }
   }
-}, true);
+}, true); // El 'true' asegura que esto se ejecute primero
