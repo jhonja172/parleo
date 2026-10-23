@@ -2788,33 +2788,35 @@ speedButtons.forEach((button) => {
 listenButtons.forEach((button) => {
   button.addEventListener("click", speakCurrentStory);
 });
-// --- PARCHE FINAL: EFECTO KARAOKE Y BOTÓN ESCUCHAR ---
-// Sobrescribimos la función de leer para que incluya el resaltado
-window.speakCurrentStory = function() {
-  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
-    alert("La síntesis de voz no está disponible en este navegador.");
-    return;
-  }
+// --- PARCHE FINAL v2: LEE EL TEXTO DIRECTO DE LA PANTALLA ---
+document.addEventListener('click', (e) => {
+  if (e.target.closest('.listen-button') && !e.target.closest('.vault-card')) {
+    e.preventDefault();
 
-  // Si ya está hablando, lo detenemos
-  if (window.isSpeaking) {
-    window.speechSynthesis.cancel();
-    window.isSpeaking = false;
-    return;
-  }
+    if (!("speechSynthesis" in window)) {
+      alert("La síntesis de voz no está disponible en este navegador.");
+      return;
+    }
 
-  // Obtenemos la historia actual (asumiendo que es una variable global)
-  const story = window.currentStory;
-  if (!story) {
-    alert("No hay una historia seleccionada.");
-    return;
-  }
+    const contenedor = document.getElementById('historia-texto');
+    if (!contenedor) return;
 
-  // 1. Preparar el contenedor para el efecto karaoke
-  const contenedor = document.getElementById('historia-texto');
-  if (contenedor) {
+    // 1. Extraemos el texto directamente de lo que se ve en pantalla
+    const texto = contenedor.innerText.trim();
+    if (!texto) {
+      alert("No hay texto para leer.");
+      return;
+    }
+
+    // Si ya está hablando, lo detenemos
+    if (window.speechSynthesis.speaking) {
+      window.speechSynthesis.cancel();
+      return;
+    }
+
+    // 2. Preparamos el contenedor para el karaoke
     contenedor.innerHTML = '';
-    const palabras = story.textoFrances.split(' ');
+    const palabras = texto.split(' ');
     palabras.forEach((palabra, index) => {
       const span = document.createElement('span');
       span.innerText = palabra + ' ';
@@ -2822,54 +2824,38 @@ window.speakCurrentStory = function() {
       span.style.transition = 'background-color 0.2s, color 0.2s';
       contenedor.appendChild(span);
     });
-  }
 
-  // 2. Configurar la voz
-  const utterance = new SpeechSynthesisUtterance(story.textoFrances);
-  utterance.lang = 'fr-FR';
-  
-  // Obtenemos la velocidad del botón seleccionado
-  const botonVelocidad = document.querySelector('.speed-button.is-selected');
-  utterance.rate = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
+    // 3. Configuramos la voz
+    const utterance = new SpeechSynthesisUtterance(texto);
+    utterance.lang = 'fr-FR';
+    
+    // Obtenemos la velocidad del botón seleccionado
+    const botonVelocidad = document.querySelector('.speed-button.is-selected');
+    utterance.rate = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
 
-  // 3. Efecto karaoke
-  utterance.onboundary = (event) => {
-    if (event.name === 'word') {
-      const charIndex = event.charIndex;
-      const textoHastaAqui = story.textoFrances.substring(0, charIndex);
-      const numeroPalabra = textoHastaAqui.split(' ').length - 1;
+    // 4. Efecto karaoke
+    utterance.onboundary = (event) => {
+      if (event.name === 'word') {
+        const charIndex = event.charIndex;
+        const textoHastaAqui = texto.substring(0, charIndex);
+        const numeroPalabra = textoHastaAqui.split(' ').length - 1;
 
-      // Limpiar resaltado anterior
-      document.querySelectorAll('#historia-texto span').forEach(span => {
-        span.style.backgroundColor = 'transparent';
-        span.style.color = 'inherit';
-        span.style.fontWeight = 'normal';
-      });
+        document.querySelectorAll('#historia-texto span').forEach(span => {
+          span.style.backgroundColor = 'transparent';
+          span.style.color = 'inherit';
+          span.style.fontWeight = 'normal';
+        });
 
-      // Resaltar palabra actual
-      const palabraActual = document.getElementById(`palabra-${numeroPalabra}`);
-      if (palabraActual) {
-        palabraActual.style.backgroundColor = '#e8f0e8';
-        palabraActual.style.color = '#1e4d2b';
-        palabraActual.style.fontWeight = 'bold';
+        const palabraActual = document.getElementById(`palabra-${numeroPalabra}`);
+        if (palabraActual) {
+          palabraActual.style.backgroundColor = '#e8f0e8';
+          palabraActual.style.color = '#1e4d2b';
+          palabraActual.style.fontWeight = 'bold';
+        }
       }
-    }
-  };
+    };
 
-  // 4. Eventos de finalización
-  utterance.addEventListener("end", () => { window.isSpeaking = false; });
-  utterance.addEventListener("error", () => { window.isSpeaking = false; });
-
-  // 5. Reproducir
-  window.speechSynthesis.cancel();
-  window.isSpeaking = true;
-  window.speechSynthesis.speak(utterance);
-};
-
-// Conectar los botones de escuchar para que usen esta nueva función
-document.addEventListener('click', (e) => {
-  if (e.target.closest('.listen-button') && !e.target.closest('.vault-card')) {
-    e.preventDefault();
-    window.speakCurrentStory();
+    // 5. Reproducir
+    window.speechSynthesis.speak(utterance);
   }
 });
