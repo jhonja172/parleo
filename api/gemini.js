@@ -96,19 +96,8 @@ module.exports = async function handler(request, response) {
     ) {
       return response.status(400).json({ error: "El formato de respuesta no es válido." });
     }
-    if (
-      config.temperature !== undefined &&
-      (typeof config.temperature !== "number" ||
-        config.temperature < 0 ||
-        config.temperature > 1)
-    ) {
-      return response.status(400).json({ error: "La temperatura debe estar entre 0 y 1." });
-    }
     if (config.responseMimeType !== undefined) {
       generationConfig.responseMimeType = config.responseMimeType;
-    }
-    if (config.temperature !== undefined) {
-      generationConfig.temperature = config.temperature;
     }
   }
   generationConfig.thinkingConfig = { thinkingLevel: "LOW" };

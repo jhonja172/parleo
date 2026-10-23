@@ -9,11 +9,28 @@ const VAULT_SPEED_STORAGE_KEY = "parleoVaultSpeed.v1";
 const READ_STORIES_STORAGE_KEY = "parleoReadStories.v1";
 const STORY_PROGRESS_GOAL = 10;
 const VAULT_PLAYBACK_RATES = [0.75, 0.85, 1];
-const WORD_LIMITS = {
-  Principiante: 150,
-  Intermedio: 250,
-  Avanzado: 350,
+const LEVEL_CONFIG = {
+  A1: { words: 150, guidance: "vocabulario muy básico y frases cortas" },
+  A2: {
+    words: 250,
+    guidance:
+      "conectores simples (et, mais, parce que) y tiempos como passé composé e imparfait",
+  },
+  B1: {
+    words: 450,
+    guidance: "incluye subjonctif, conditionnel y vocabulario más amplio",
+  },
+  B2: {
+    words: 550,
+    guidance: "vocabulario avanzado, expresiones idiomáticas y estructuras formales",
+  },
+  C1: {
+    words: 650,
+    guidance:
+      "vocabulario experto, expresiones literarias y estructuras complejas",
+  },
 };
+const LEVEL_ORDER = Object.keys(LEVEL_CONFIG);
 const AVATAR_OPTIONS = [
   { style: "adventurer", seed: "Felix", label: "Aventurero Félix" },
   { style: "avataaars", seed: "Mia", label: "Mia" },
@@ -31,33 +48,6 @@ const AVATAR_OPTIONS = [
   ...avatar,
   url: `https://api.dicebear.com/7.x/${avatar.style}/svg?seed=${encodeURIComponent(avatar.seed)}`,
 }));
-
-const storyTemplates = {
-  Narración: {
-    french:
-      "Au petit matin, Camille découvre une vieille carte dans le jardin. Elle suit le chemin indiqué et arrive devant un grand chêne. À son pied, une boîte l’attend. À l’intérieur, elle trouve des photos de sa famille et une lettre de sa grand-mère. Camille sourit : son aventure vient de commencer.",
-    spanish:
-      "Al amanecer, Camille descubre un viejo mapa en el jardín. Sigue el camino indicado y llega frente a un gran roble. A sus pies, la espera una caja. Dentro encuentra fotos de su familia y una carta de su abuela. Camille sonríe: su aventura acaba de comenzar.",
-  },
-  Diálogo: {
-    french:
-      "— Bonjour, je voudrais acheter des pommes, s’il vous plaît. — Bien sûr ! Combien en voulez-vous ? — J’en prends quatre. Elles sont très belles. — Voilà. Autre chose ? — Oui, un peu de fromage, s’il vous plaît. — Très bien. Bonne journée ! — Merci, vous aussi !",
-    spanish:
-      "— Buenos días, quisiera comprar manzanas, por favor. — ¡Por supuesto! ¿Cuántas quiere? — Me llevo cuatro. Son muy bonitas. — Aquí tiene. ¿Algo más? — Sí, un poco de queso, por favor. — Muy bien. ¡Que tenga un buen día! — ¡Gracias, igualmente!",
-  },
-  "Situación cotidiana": {
-    french:
-      "Ce matin, Hugo se réveille à sept heures. Il se prépare un café et vérifie la météo. Il pleut, alors il prend son parapluie. Dans le bus, il lit quelques pages de son livre. Quand il arrive au travail, il dit bonjour à ses collègues et commence sa journée.",
-    spanish:
-      "Esta mañana, Hugo se despierta a las siete. Se prepara un café y consulta el tiempo. Está lloviendo, así que toma su paraguas. En el autobús, lee algunas páginas de su libro. Cuando llega al trabajo, saluda a sus compañeros y comienza su jornada.",
-  },
-  Noticia: {
-    french:
-      "Une nouvelle bibliothèque a ouvert ses portes ce samedi dans le centre de Lyon. Le bâtiment accueille des livres en plusieurs langues et propose un espace de lecture pour les enfants. La bibliothèque organise aussi des ateliers gratuits chaque semaine. Les habitants peuvent la visiter du mardi au dimanche.",
-    spanish:
-      "Este sábado abrió sus puertas una nueva biblioteca en el centro de Lyon. El edificio alberga libros en varios idiomas y ofrece un espacio de lectura para niños. La biblioteca también organiza talleres gratuitos cada semana. Los vecinos pueden visitarla de martes a domingo.",
-  },
-};
 
 const mainView = document.querySelector("#main-view");
 const readerView = document.querySelector("#reader-view");
@@ -190,7 +180,12 @@ async function guardarProgreso(datos) {
     throw new Error("Los datos de progreso deben ser un objeto.");
   }
 
-  const allowedKeys = new Set(["perfil", "avatar", "difficulty"]);
+  const allowedKeys = new Set([
+    "historias",
+    "perfil",
+    "avatar",
+    "difficulty",
+  ]);
   const unexpectedKeys = Object.keys(datos).filter((key) => !allowedKeys.has(key));
   if (unexpectedKeys.length > 0) {
     throw new Error(
@@ -212,7 +207,7 @@ async function guardarProgreso(datos) {
   };
   const payload = {
     user_id: usuarioActual.id,
-    historias: readCollection(userStoriesStorageKey(usuarioActual.id)),
+    historias: datos.historias ?? stories,
     baul: readCollection(`${VAULT_STORAGE_KEY}.${usuarioActual.id}`),
     perfil: datos.perfil || {
       name: usuarioActual.name,
@@ -226,6 +221,9 @@ async function guardarProgreso(datos) {
     .upsert(payload, { onConflict: "user_id" });
   if (error) {
     throw new Error(`No se pudo guardar el progreso en Supabase: ${error.message}`);
+  }
+  if (datos.historias !== undefined) {
+    stories = datos.historias;
   }
 }
 
@@ -291,16 +289,9 @@ async function loadAuthenticatedProfile(authUser) {
           ? profile.difficulty
           : currentUser.difficulty,
     };
-  } else {
-    await guardarProgreso({
-      perfil: {
-        name: currentUser.name,
-        level: currentUser.level,
-      },
-      avatar: currentUser.avatar,
-      difficulty: currentUser.difficulty,
-    });
   }
+
+  await loadStories(profile);
 
   return currentUser;
 }
@@ -326,7 +317,6 @@ function readUserScopedValue(legacyKey, scopedKey) {
 }
 
 function createUserDataBoxes(userId) {
-  window.localStorage.setItem(userStoriesStorageKey(userId), "[]");
   window.localStorage.setItem(`${VAULT_STORAGE_KEY}.${userId}`, "[]");
   window.localStorage.setItem(`${READ_STORIES_STORAGE_KEY}.${userId}`, "[]");
   window.localStorage.setItem(`${VAULT_SPEED_STORAGE_KEY}.${userId}`, "0.75");
@@ -335,7 +325,7 @@ function createUserDataBoxes(userId) {
 function showApplication(user) {
   currentUser = user;
   storageError = "";
-  stories = loadStories();
+  setLevelOptions(storyLevel, currentUser.level);
   renderHeaderAvatar(user);
   loginView.hidden = true;
   application.hidden = false;
@@ -458,6 +448,7 @@ async function registerUser(event) {
       level: registrationLevel.value,
       difficulty: "Normal",
     };
+    stories = [];
     createUserDataBoxes(currentUser.id);
 
     if (!data.session) {
@@ -523,6 +514,7 @@ function renderProfile(user) {
   const avatarUrl = user.avatar || AVATAR_OPTIONS[0].url;
   profileName.textContent = user.name;
   profileNameInput.value = user.name;
+  setLevelOptions(profileLevel, user.level);
   profileLevel.value = user.level;
   exerciseDifficulty.value = user.difficulty;
   profileLevelSummary.textContent = `Nivel actual: ${user.level}`;
@@ -536,6 +528,30 @@ function renderProfile(user) {
 function renderHeaderAvatar(user) {
   headerAvatar.src = user.avatar || AVATAR_OPTIONS[0].url;
   headerAvatar.alt = `Avatar de ${user.name}`;
+}
+
+function availableLevels(currentLevel) {
+  const currentIndex = LEVEL_ORDER.indexOf(currentLevel);
+  if (currentIndex < 0) {
+    return ["A1"];
+  }
+
+  const firstIndex = currentIndex >= 2 ? currentIndex - 1 : currentIndex;
+  const lastIndex = Math.min(currentIndex + 1, LEVEL_ORDER.length - 1);
+  return LEVEL_ORDER.slice(firstIndex, lastIndex + 1);
+}
+
+function setLevelOptions(select, currentLevel) {
+  const levels = availableLevels(currentLevel);
+  select.replaceChildren(
+    ...levels.map((level) => {
+      const option = document.createElement("option");
+      option.value = level;
+      option.textContent = level;
+      return option;
+    }),
+  );
+  select.value = levels.includes(currentLevel) ? currentLevel : levels[0];
 }
 
 async function saveProfileAvatar(avatarUrl) {
@@ -944,41 +960,48 @@ function isStoredStory(value) {
     typeof value.nivel === "string" &&
     typeof value.tipo === "string" &&
     typeof value.textoFrances === "string" &&
-    typeof value.textoEspanol === "string"
+    typeof value.textoEspanol === "string" &&
+    (value.advertencia === undefined || typeof value.advertencia === "string")
   );
 }
 
-function loadStories() {
-  try {
-    if (!currentUser) {
-      throw new Error("No hay una sesión activa.");
-    }
-
-    const storageKey = getStoriesStorageKey();
-    const storedValue = readUserScopedValue(STORAGE_KEY, storageKey);
-    if (storedValue === null) {
-      storageError = "";
-      return [];
-    }
-
-    const parsedValue = JSON.parse(storedValue);
-    if (!Array.isArray(parsedValue) || !parsedValue.every(isStoredStory)) {
-      throw new Error("Los datos guardados no tienen el formato esperado.");
-    }
-    return parsedValue;
-  } catch (error) {
-    storageError = `No se pudieron cargar las historias guardadas: ${error.message}`;
-    return [];
+async function loadStories(profile = null) {
+  if (!currentUser) {
+    throw new Error("No hay una sesión activa.");
   }
+
+  const progress = profile || (await cargarProgreso());
+  const cloudStories = progress?.historias ?? [];
+  if (!Array.isArray(cloudStories) || !cloudStories.every(isStoredStory)) {
+    throw new Error("Las historias de Supabase no tienen el formato esperado.");
+  }
+
+  const legacyValue = readUserScopedValue(STORAGE_KEY, getStoriesStorageKey());
+  const legacyStories = legacyValue === null ? [] : JSON.parse(legacyValue);
+  if (!Array.isArray(legacyStories) || !legacyStories.every(isStoredStory)) {
+    throw new Error("Las historias guardadas localmente no tienen el formato esperado.");
+  }
+
+  const knownIds = new Set(cloudStories.map((story) => story.id));
+  const migratedStories = legacyStories.filter((story) => !knownIds.has(story.id));
+  stories = [...cloudStories, ...migratedStories];
+  if (migratedStories.length > 0 || !Array.isArray(progress?.historias)) {
+    await guardarProgreso({ historias: stories });
+  }
+  window.localStorage.removeItem(getStoriesStorageKey());
+  storageError = "";
+  return stories;
 }
 
-function saveStories(updatedStories) {
+async function saveStories(updatedStories) {
   try {
     if (!currentUser) {
       throw new Error("No hay una sesión activa.");
     }
-    window.localStorage.setItem(getStoriesStorageKey(), JSON.stringify(updatedStories));
-    stories = updatedStories;
+    if (!Array.isArray(updatedStories) || !updatedStories.every(isStoredStory)) {
+      throw new Error("La lista de historias no tiene el formato esperado.");
+    }
+    await guardarProgreso({ historias: updatedStories });
     storageError = "";
     return true;
   } catch (error) {
@@ -1106,24 +1129,102 @@ function renderInteractiveStory(text) {
   frenchStory.replaceChildren(fragment);
 }
 
-function buildExactLengthText(seed, target, filler) {
-  const words = seed.trim().split(/\s+/);
-  const fillerWords = filler.trim().split(/\s+/);
-  let fillerIndex = 0;
-
-  while (words.length < target) {
-    words.push(fillerWords[fillerIndex % fillerWords.length]);
-    fillerIndex += 1;
+async function createStory(theme, level, type, onStage) {
+  const validTypes = [
+    "Narración",
+    "Diálogo",
+    "Situación cotidiana",
+    "Noticia",
+  ];
+  const levelRules = LEVEL_CONFIG[level];
+  if (
+    !levelRules ||
+    !availableLevels(currentUser?.level).includes(level) ||
+    !validTypes.includes(type)
+  ) {
+    throw new Error("El tipo o nivel seleccionado no es válido.");
   }
 
-  return words.slice(0, target).join(" ");
-}
+  const previousStories = stories
+    .slice(0, 5)
+    .map(
+      (story, index) =>
+        `${index + 1}. Tema: ${story.tema}; tipo: ${story.tipo}\n${story.textoFrances.slice(0, 1600)}`,
+    )
+    .join("\n\n");
+  const previousContext = previousStories
+    ? `Historias anteriores. No reutilices sus personajes, sucesos, frases ni estructuras:\n${previousStories}`
+    : "No hay historias anteriores.";
+  onStage?.("Generando esquema…");
+  const outlineText = await requestGeminiText(
+    "Eres un planificador creativo de historias en francés. " +
+      `Prepara únicamente el esquema de una historia original sobre: ${theme}. ` +
+      `Nivel: ${level}. Tipo: ${type}. Escribe exactamente tres frases cortas ` +
+      "en francés: una para el inicio, una para el nudo y una para el desenlace. " +
+      `${previousContext} Devuelve solo JSON válido con las claves inicio, nudo y desenlace.`,
+    { generationConfig: { responseMimeType: "application/json" } },
+  );
 
-function createStory(theme, level, type) {
-  const template = storyTemplates[type];
-  const wordLimit = WORD_LIMITS[level];
-  if (!template || !wordLimit) {
-    throw new Error("El tipo o nivel seleccionado no es válido.");
+  let outline;
+  try {
+    outline = JSON.parse(outlineText);
+  } catch {
+    throw new Error("Gemini no devolvió un esquema válido.");
+  }
+  if (
+    !outline ||
+    ["inicio", "nudo", "desenlace"].some(
+      (part) => typeof outline[part] !== "string" || !outline[part].trim(),
+    )
+  ) {
+    throw new Error("Gemini devolvió un esquema incompleto.");
+  }
+
+  onStage?.("Redactando historia…");
+  const storyText = await requestGeminiText(
+    "Eres un escritor creativo de historias en francés. " +
+      `Escribe una historia completamente original sobre el tema: ${theme}. ` +
+      `Nivel: ${level}. Tipo: ${type}. Reglas obligatorias: ` +
+      `1) La historia debe tener entre ${levelRules.words} y ${levelRules.words + 30} palabras. ` +
+      "2) NO uses frases de relleno ni repitas la misma oración. " +
+      "3) La historia debe tener un inicio, un nudo y un desenlace claros. " +
+      `4) Usa ${levelRules.guidance}, correspondientes al nivel ${level}. ` +
+      "5) Si no puedes llegar al número de palabras de forma natural, escribe una historia más corta pero coherente. " +
+      "6) PROHIBIDO usar frases de relleno o repetir la misma oración. " +
+      "Si no puedes completar la historia de forma natural, termina antes. " +
+      "NO empieces con 'Aujourd'hui, une histoire sur...'. " +
+      "Desarrolla este esquema sin cambiar su inicio, conflicto y desenlace:\n" +
+      `Inicio: ${outline.inicio}\nNudo: ${outline.nudo}\nDesenlace: ${outline.desenlace}\n\n` +
+      `${previousContext}\n\n` +
+      "Devuelve únicamente un JSON válido con las propiedades textoFrances y " +
+      "textoEspanol; la primera debe contener la historia en francés y la segunda " +
+      "su traducción natural al español.",
+    { generationConfig: { responseMimeType: "application/json" } },
+  );
+
+  let generated;
+  try {
+    generated = JSON.parse(storyText);
+  } catch {
+    throw new Error("Gemini no devolvió una historia en formato JSON válido.");
+  }
+  if (
+    typeof generated.textoFrances !== "string" ||
+    !generated.textoFrances.trim() ||
+    typeof generated.textoEspanol !== "string" ||
+    !generated.textoEspanol.trim()
+  ) {
+    throw new Error("Gemini devolvió una historia incompleta.");
+  }
+
+  const frenchText = generated.textoFrances.trim();
+  if (
+    frenchText.toLocaleLowerCase("fr-FR").includes("la journée est belle") ||
+    hasRepeatedLongSentence(frenchText)
+  ) {
+    throw new Error(
+      "La historia se ha generado con errores. Por favor, intenta de nuevo",
+    );
   }
 
   return {
@@ -1131,17 +1232,30 @@ function createStory(theme, level, type) {
     tema: theme,
     nivel: level,
     tipo: type,
-    textoFrances: buildExactLengthText(
-      `Aujourd'hui, une histoire sur ${theme} commence. ${template.french}`,
-      wordLimit,
-      "La journée est belle et chacun découvre une nouvelle idée.",
-    ),
-    textoEspanol: buildExactLengthText(
-      `Hoy comienza una historia sobre ${theme}. ${template.spanish}`,
-      wordLimit,
-      "El día es hermoso y cada persona descubre una idea nueva.",
-    ),
+    textoFrances: frenchText,
+    textoEspanol: generated.textoEspanol.trim(),
   };
+}
+
+function hasRepeatedLongSentence(text) {
+  const sentenceCounts = new Map();
+  const sentences = text.match(/[^.!?…]+[.!?…]?/gu) || [];
+  for (const sentence of sentences) {
+    const normalized = sentence
+      .toLocaleLowerCase("fr-FR")
+      .replace(/[^\p{L}\p{N}\s']/gu, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!normalized || normalized.split(/\s+/).length <= 5) {
+      continue;
+    }
+    const count = (sentenceCounts.get(normalized) || 0) + 1;
+    if (count > 2) {
+      return true;
+    }
+    sentenceCounts.set(normalized, count);
+  }
+  return false;
 }
 
 function setMainTab(selectedTab) {
@@ -1238,7 +1352,12 @@ function renderStories() {
 
     const details = document.createElement("span");
     details.className = "story-item-details";
-    details.textContent = `${story.nivel} · ${countWords(story.textoFrances)} palabras · ${story.tipo}`;
+    details.textContent = [
+      `${story.nivel} · ${countWords(story.textoFrances)} palabras · ${story.tipo}`,
+      story.advertencia || "",
+    ]
+      .filter(Boolean)
+      .join(" · ");
 
     openButton.append(title, details);
     openButton.addEventListener("click", () => openStory(story));
@@ -1248,10 +1367,13 @@ function renderStories() {
     deleteButton.type = "button";
     deleteButton.textContent = "X";
     deleteButton.setAttribute("aria-label", `Eliminar historia: ${story.tema}`);
-    deleteButton.addEventListener("click", () => {
+    deleteButton.addEventListener("click", async () => {
       const updatedStories = stories.filter((itemStory) => itemStory.id !== story.id);
-      if (saveStories(updatedStories)) {
+      deleteButton.disabled = true;
+      if (await saveStories(updatedStories)) {
         renderStories();
+      } else {
+        deleteButton.disabled = false;
       }
     });
 
@@ -1264,7 +1386,13 @@ function openStory(story) {
   currentStory = story;
   markStoryAsRead(story.id);
   readerTitle.textContent = story.tema;
-  readerSummary.textContent = `${story.nivel} · ${story.tipo}`;
+  readerSummary.textContent = [
+    story.nivel,
+    story.tipo,
+    story.advertencia || "",
+  ]
+    .filter(Boolean)
+    .join(" · ");
   renderInteractiveStory(story.textoFrances);
   spanishTranslation.textContent = story.textoEspanol;
   translationContainer.hidden = true;
@@ -1369,7 +1497,7 @@ async function requestGeminiText(prompt, options = {}) {
   try {
     payload = await response.json();
   } catch {
-    throw new Error("El servicio de Julie devolvió una respuesta no válida.");
+    throw new Error("El servicio de IA devolvió una respuesta no válida.");
   }
 
   if (!response.ok) {
@@ -1378,7 +1506,7 @@ async function requestGeminiText(prompt, options = {}) {
     );
   }
   if (typeof payload.text !== "string" || payload.text.trim().length === 0) {
-    throw new Error("Julie devolvió una respuesta vacía.");
+    throw new Error("El servicio de IA devolvió una respuesta vacía.");
   }
   return payload.text.trim();
 }
@@ -1488,7 +1616,6 @@ async function requestJulieReply(userMessage, isDictation) {
     systemInstruction: systemPrompt,
     contents,
     generationConfig: {
-      temperature: 0.7,
       responseMimeType: "application/json",
     },
   });
@@ -2177,7 +2304,7 @@ studentSummary.addEventListener("input", () => {
   buildFeedback.hidden = true;
 });
 
-storyForm.addEventListener("submit", (event) => {
+storyForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   formStatus.textContent = "";
 
@@ -2192,21 +2319,35 @@ storyForm.addEventListener("submit", (event) => {
     return;
   }
 
-  let story;
+  const submitButton = storyForm.querySelector('button[type="submit"]');
+  submitButton.disabled = true;
+  submitButton.querySelector("span").textContent = "Creando historia…";
   try {
-    story = createStory(theme, storyLevel.value, storyType.value);
+    const story = await createStory(
+      theme,
+      storyLevel.value,
+      storyType.value,
+      (stage) => {
+        formStatus.textContent = stage;
+      },
+    );
+    if (!(await saveStories([story, ...stories]))) {
+      return;
+    }
+    formStatus.textContent = story.advertencia || "";
+    storyForm.reset();
+    setMainTab("library");
+    renderStories();
   } catch (error) {
-    formStatus.textContent = error.message;
-    return;
+    formStatus.textContent =
+      error.message ===
+      "La historia se ha generado con errores. Por favor, intenta de nuevo"
+        ? error.message
+        : `No se pudo generar la historia: ${error.message}`;
+  } finally {
+    submitButton.disabled = false;
+    submitButton.querySelector("span").textContent = "Generar Historia";
   }
-
-  if (!saveStories([story, ...stories])) {
-    return;
-  }
-
-  storyForm.reset();
-  setMainTab("library");
-  renderStories();
 });
 
 profileForm.addEventListener("submit", async (event) => {
@@ -2224,6 +2365,11 @@ profileForm.addEventListener("submit", async (event) => {
   const name = profileNameInput.value.trim();
   if (!name) {
     profileNameInput.focus();
+    return;
+  }
+  if (!availableLevels(savedUser.level).includes(profileLevel.value)) {
+    profileStatus.textContent =
+      "Elige tu nivel actual o un nivel permitido en la progresión.";
     return;
   }
 
@@ -2244,6 +2390,7 @@ profileForm.addEventListener("submit", async (event) => {
       difficulty: updatedUser.difficulty,
     });
     currentUser = updatedUser;
+    setLevelOptions(storyLevel, updatedUser.level);
     renderProfile(updatedUser);
     profileStatus.textContent = "Cambios guardados correctamente.";
   } catch (error) {
