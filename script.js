@@ -325,7 +325,7 @@ function createUserDataBoxes(userId) {
 function showApplication(user) {
   currentUser = user;
   storageError = "";
-  setLevelOptions(storyLevel, currentUser.level);
+  setAllLevelOptions(storyLevel, currentUser.level);
   renderHeaderAvatar(user);
   loginView.hidden = true;
   application.hidden = false;
@@ -552,6 +552,18 @@ function setLevelOptions(select, currentLevel) {
     }),
   );
   select.value = levels.includes(currentLevel) ? currentLevel : levels[0];
+}
+
+function setAllLevelOptions(select, selectedLevel) {
+  select.replaceChildren(
+    ...LEVEL_ORDER.map((level) => {
+      const option = document.createElement("option");
+      option.value = level;
+      option.textContent = level;
+      return option;
+    }),
+  );
+  select.value = LEVEL_CONFIG[selectedLevel] ? selectedLevel : LEVEL_ORDER[0];
 }
 
 async function saveProfileAvatar(avatarUrl) {
@@ -1137,11 +1149,7 @@ async function createStory(theme, level, type, onStage) {
     "Noticia",
   ];
   const levelRules = LEVEL_CONFIG[level];
-  if (
-    !levelRules ||
-    !availableLevels(currentUser?.level).includes(level) ||
-    !validTypes.includes(type)
-  ) {
+  if (!levelRules || !validTypes.includes(type)) {
     throw new Error("El tipo o nivel seleccionado no es válido.");
   }
 
@@ -1183,14 +1191,12 @@ async function createStory(theme, level, type, onStage) {
   onStage?.("Redactando historia…");
   const storyText = await requestGeminiText(
     "Eres un escritor creativo de historias en francés. " +
-      `Escribe una historia completamente original sobre el tema: ${theme}. ` +
-      `Nivel: ${level}. Tipo: ${type}. Reglas obligatorias: ` +
-      `1) La historia debe tener entre ${levelRules.words} y ${levelRules.words + 30} palabras. ` +
-      "2) NO uses frases de relleno ni repitas la misma oración. " +
-      "3) La historia debe tener un inicio, un nudo y un desenlace claros. " +
-      `4) Usa ${levelRules.guidance}, correspondientes al nivel ${level}. ` +
-      "5) Si no puedes llegar al número de palabras de forma natural, escribe una historia más corta pero coherente. " +
-      "6) PROHIBIDO usar frases de relleno o repetir la misma oración. " +
+      `Escribe una historia en francés sobre ${theme} para el nivel ${level}. ` +
+      `Tipo: ${type}. La historia debe tener aproximadamente ${levelRules.words} palabras ` +
+      `y usar ${levelRules.guidance}. Reglas obligatorias: ` +
+    "1) NO uses frases de relleno ni repitas la misma oración. " +
+    "2) La historia debe tener un inicio, un nudo y un desenlace claros. " +
+    "3) PROHIBIDO usar frases de relleno o repetir la misma oración. " +
       "Si no puedes completar la historia de forma natural, termina antes. " +
       "NO empieces con 'Aujourd'hui, une histoire sur...'. " +
       "Desarrolla este esquema sin cambiar su inicio, conflicto y desenlace:\n" +
@@ -1226,6 +1232,10 @@ async function createStory(theme, level, type, onStage) {
       "La historia se ha generado con errores. Por favor, intenta de nuevo",
     );
   }
+  const shortStoryWarning =
+    countWords(frenchText) < levelRules.words * 0.8
+      ? "La historia es un poco corta para este nivel, pero puedes practicar con ella"
+      : "";
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1234,6 +1244,7 @@ async function createStory(theme, level, type, onStage) {
     tipo: type,
     textoFrances: frenchText,
     textoEspanol: generated.textoEspanol.trim(),
+    ...(shortStoryWarning ? { advertencia: shortStoryWarning } : {}),
   };
 }
 
@@ -2320,6 +2331,7 @@ storyForm.addEventListener("submit", async (event) => {
   }
 
   const submitButton = storyForm.querySelector('button[type="submit"]');
+  const selectedLevel = storyLevel.value;
   submitButton.disabled = true;
   submitButton.querySelector("span").textContent = "Creando historia…";
   try {
@@ -2336,6 +2348,7 @@ storyForm.addEventListener("submit", async (event) => {
     }
     formStatus.textContent = story.advertencia || "";
     storyForm.reset();
+    storyLevel.value = selectedLevel;
     setMainTab("library");
     renderStories();
   } catch (error) {
@@ -2390,7 +2403,7 @@ profileForm.addEventListener("submit", async (event) => {
       difficulty: updatedUser.difficulty,
     });
     currentUser = updatedUser;
-    setLevelOptions(storyLevel, updatedUser.level);
+    setAllLevelOptions(storyLevel, updatedUser.level);
     renderProfile(updatedUser);
     profileStatus.textContent = "Cambios guardados correctamente.";
   } catch (error) {
