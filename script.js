@@ -196,7 +196,7 @@ const readingPanel = document.querySelector("#reading-panel");
 const questionsPanel = document.querySelector("#questions-panel");
 const questionList = document.querySelector("#question-list");
 const questionLoadStatus = document.querySelector("#question-load-status");
-const frenchStory = document.querySelector("#french-story");
+const frenchStory = document.querySelector("#historia-texto");
 const spanishTranslation = document.querySelector("#spanish-translation");
 const translationToggle = document.querySelector("#translation-toggle");
 const translationContainer = document.querySelector("#translation-container");
@@ -2788,41 +2788,65 @@ speedButtons.forEach((button) => {
 listenButtons.forEach((button) => {
   button.addEventListener("click", speakCurrentStory);
 });
-// --- FUNCIÓN NUEVA PARA EL EFECTO KARAOKE ---
-function leerHistoriaConResaltado(texto) {
-  window.speechSynthesis.cancel();
+// --- PARCHE FINAL: EFECTO KARAOKE Y BOTÓN ESCUCHAR ---
+// Sobrescribimos la función de leer para que incluya el resaltado
+window.speakCurrentStory = function() {
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+    alert("La síntesis de voz no está disponible en este navegador.");
+    return;
+  }
+
+  // Si ya está hablando, lo detenemos
+  if (window.isSpeaking) {
+    window.speechSynthesis.cancel();
+    window.isSpeaking = false;
+    return;
+  }
+
+  // Obtenemos la historia actual (asumiendo que es una variable global)
+  const story = window.currentStory;
+  if (!story) {
+    alert("No hay una historia seleccionada.");
+    return;
+  }
+
+  // 1. Preparar el contenedor para el efecto karaoke
   const contenedor = document.getElementById('historia-texto');
-  if (!contenedor) return;
-  
-  contenedor.innerHTML = '';
-  const palabras = texto.split(' ');
-  palabras.forEach((palabra, index) => {
-    const span = document.createElement('span');
-    span.innerText = palabra + ' ';
-    span.id = `palabra-${index}`;
-    span.style.transition = 'background-color 0.2s, color 0.2s';
-    contenedor.appendChild(span);
-  });
+  if (contenedor) {
+    contenedor.innerHTML = '';
+    const palabras = story.textoFrances.split(' ');
+    palabras.forEach((palabra, index) => {
+      const span = document.createElement('span');
+      span.innerText = palabra + ' ';
+      span.id = `palabra-${index}`;
+      span.style.transition = 'background-color 0.2s, color 0.2s';
+      contenedor.appendChild(span);
+    });
+  }
 
-  const utterance = new SpeechSynthesisUtterance(texto);
-  utterance.lang = 'fr-FR'; 
+  // 2. Configurar la voz
+  const utterance = new SpeechSynthesisUtterance(story.textoFrances);
+  utterance.lang = 'fr-FR';
   
+  // Obtenemos la velocidad del botón seleccionado
   const botonVelocidad = document.querySelector('.speed-button.is-selected');
-  const velocidad = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
-  utterance.rate = velocidad;
+  utterance.rate = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
 
+  // 3. Efecto karaoke
   utterance.onboundary = (event) => {
     if (event.name === 'word') {
       const charIndex = event.charIndex;
-      const textoHastaAqui = texto.substring(0, charIndex);
+      const textoHastaAqui = story.textoFrances.substring(0, charIndex);
       const numeroPalabra = textoHastaAqui.split(' ').length - 1;
 
+      // Limpiar resaltado anterior
       document.querySelectorAll('#historia-texto span').forEach(span => {
         span.style.backgroundColor = 'transparent';
         span.style.color = 'inherit';
         span.style.fontWeight = 'normal';
       });
 
+      // Resaltar palabra actual
       const palabraActual = document.getElementById(`palabra-${numeroPalabra}`);
       if (palabraActual) {
         palabraActual.style.backgroundColor = '#e8f0e8';
@@ -2832,63 +2856,20 @@ function leerHistoriaConResaltado(texto) {
     }
   };
 
-  window.speechSynthesis.speak(utterance);
-}
+  // 4. Eventos de finalización
+  utterance.addEventListener("end", () => { window.isSpeaking = false; });
+  utterance.addEventListener("error", () => { window.isSpeaking = false; });
 
-// Conectar el botón de la historia con la función nueva
-document.addEventListener("click", (e) => {
+  // 5. Reproducir
+  window.speechSynthesis.cancel();
+  window.isSpeaking = true;
+  window.speechSynthesis.speak(utterance);
+};
+
+// Conectar los botones de escuchar para que usen esta nueva función
+document.addEventListener('click', (e) => {
   if (e.target.closest('.listen-button') && !e.target.closest('.vault-card')) {
-    e.preventDefault(); 
-    const texto = document.getElementById('historia-texto').innerText.trim();
-    if (texto) {
-      leerHistoriaConResaltado(texto);
-    }
+    e.preventDefault();
+    window.speakCurrentStory();
   }
 });
-// --- PARCHE DEFINITIVO (A PRUEBA DE BALAS) ---
-document.addEventListener('click', (e) => {
-  // 1. Si el clic fue en la "X" de eliminar, no hacemos nada
-  if (e.target.closest('button')) return;
-
-  // 2. Buscamos el contenedor de la historia.
-  // En tu captura, la tarjeta blanca tiene el título y el texto.
-  // Buscamos el elemento más cercano que contenga el título (h3) o el texto (p).
-  const storyCard = e.target.closest('li, .story-card, .library-item, .story-list-item');
-  
-  // Si no encontramos una tarjeta, salimos.
-  if (!storyCard) return;
-
-  e.preventDefault();
-  e.stopPropagation();
-
-  // 3. Extraemos el título y el texto directamente de lo que se ve en pantalla
-  const titulo = storyCard.querySelector('h3')?.innerText || storyCard.querySelector('.story-title')?.innerText || "Historia";
-  const textoCompleto = storyCard.querySelector('p')?.innerText || "Texto no disponible";
-
-  // 4. Ocultamos la vista principal y mostramos la de lectura
-  const mainView = document.getElementById('main-view');
-  const readerView = document.getElementById('reader-view');
-  
-  if (mainView && readerView) {
-    mainView.hidden = true;
-    readerView.hidden = false;
-
-    // 5. Rellenamos la vista de lectura
-    document.getElementById('reader-title').innerText = titulo;
-    document.getElementById('reader-summary').innerText = `Nivel A1 · Narración`;
-    
-    const textoContainer = document.getElementById('historia-texto');
-    if (textoContainer) {
-      textoContainer.innerText = textoCompleto;
-    }
-
-    // 6. Si la función openStory existe, la llamamos para que cargue las preguntas y la lógica
-    if (typeof openStory === 'function') {
-      openStory({
-        id: 'temp',
-        titulo: titulo,
-        texto: textoCompleto
-      });
-    }
-  }
-}, true); // El 'true' asegura que esto se ejecute primero
