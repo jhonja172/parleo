@@ -2845,3 +2845,33 @@ document.addEventListener("click", (e) => {
     }
   }
 });
+// --- PARCHE PARA ABRIR HISTORIAS AL HACER CLIC ---
+document.addEventListener('click', (e) => {
+  // Buscamos si el clic fue en un elemento de la lista de historias
+  const itemHistoria = e.target.closest('.story-list li');
+  
+  if (itemHistoria) {
+    // Evitar que el clic en la "X" de eliminar también abra la historia
+    if (e.target.closest('button')) return; 
+
+    // Buscamos el ID de la historia en el elemento (normalmente está en un data-id)
+    const storyId = itemHistoria.getAttribute('data-id') || itemHistoria.dataset.id;
+    
+    if (storyId) {
+      // Buscamos la historia en el array global de historias (suele llamarse 'stories' o 'historias')
+      const historia = window.stories?.find(s => s.id == storyId) || 
+                       window.historias?.find(s => s.id == storyId);
+      
+      if (historia && typeof openStory === 'function') {
+        openStory(historia);
+      } else {
+        console.error("No se encontró la historia o la función openStory");
+      }
+    } else {
+      // Si no hay data-id, intentamos abrir la primera historia de la lista como respaldo
+      if (typeof openStory === 'function' && window.stories?.length > 0) {
+        openStory(window.stories[0]);
+      }
+    }
+  }
+});
