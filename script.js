@@ -1,3 +1,50 @@
+// --- NUEVA FUNCIÓN PARA LEER CON RESALTADO (KARAOKE) ---
+function leerHistoriaConResaltado(texto) {
+  window.speechSynthesis.cancel();
+  const contenedor = document.getElementById('historia-texto');
+  if (!contenedor) return;
+  
+  contenedor.innerHTML = '';
+  const palabras = texto.split(' ');
+  palabras.forEach((palabra, index) => {
+    const span = document.createElement('span');
+    span.innerText = palabra + ' ';
+    span.id = `palabra-${index}`;
+    span.style.transition = 'background-color 0.2s, color 0.2s';
+    contenedor.appendChild(span);
+  });
+
+  const utterance = new SpeechSynthesisUtterance(texto);
+  utterance.lang = 'fr-FR'; 
+  
+  // Obtener velocidad
+  const botonVelocidad = document.querySelector('.speed-button.is-selected');
+  const velocidad = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
+  utterance.rate = velocidad;
+
+  utterance.onboundary = (event) => {
+    if (event.name === 'word') {
+      const charIndex = event.charIndex;
+      const textoHastaAqui = texto.substring(0, charIndex);
+      const numeroPalabra = textoHastaAqui.split(' ').length - 1;
+
+      document.querySelectorAll('#historia-texto span').forEach(span => {
+        span.style.backgroundColor = 'transparent';
+        span.style.color = 'inherit';
+        span.style.fontWeight = 'normal';
+      });
+
+      const palabraActual = document.getElementById(`palabra-${numeroPalabra}`);
+      if (palabraActual) {
+        palabraActual.style.backgroundColor = '#e8f0e8';
+        palabraActual.style.color = '#1e4d2b';
+        palabraActual.style.fontWeight = 'bold';
+      }
+    }
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
 const GEMINI_ENDPOINT = "/api/gemini";
 const SUPABASE_URL = "https://ugmfpvvpvkylclesltyx.supabase.co";
 const SUPABASE_KEY = "sb_publishable_3sjXn1GV4ayWLGgmpuqdkQ_dCRj6sIo";
@@ -2740,4 +2787,61 @@ speedButtons.forEach((button) => {
 
 listenButtons.forEach((button) => {
   button.addEventListener("click", speakCurrentStory);
+});
+// --- FUNCIÓN NUEVA PARA EL EFECTO KARAOKE ---
+function leerHistoriaConResaltado(texto) {
+  window.speechSynthesis.cancel();
+  const contenedor = document.getElementById('historia-texto');
+  if (!contenedor) return;
+  
+  contenedor.innerHTML = '';
+  const palabras = texto.split(' ');
+  palabras.forEach((palabra, index) => {
+    const span = document.createElement('span');
+    span.innerText = palabra + ' ';
+    span.id = `palabra-${index}`;
+    span.style.transition = 'background-color 0.2s, color 0.2s';
+    contenedor.appendChild(span);
+  });
+
+  const utterance = new SpeechSynthesisUtterance(texto);
+  utterance.lang = 'fr-FR'; 
+  
+  const botonVelocidad = document.querySelector('.speed-button.is-selected');
+  const velocidad = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
+  utterance.rate = velocidad;
+
+  utterance.onboundary = (event) => {
+    if (event.name === 'word') {
+      const charIndex = event.charIndex;
+      const textoHastaAqui = texto.substring(0, charIndex);
+      const numeroPalabra = textoHastaAqui.split(' ').length - 1;
+
+      document.querySelectorAll('#historia-texto span').forEach(span => {
+        span.style.backgroundColor = 'transparent';
+        span.style.color = 'inherit';
+        span.style.fontWeight = 'normal';
+      });
+
+      const palabraActual = document.getElementById(`palabra-${numeroPalabra}`);
+      if (palabraActual) {
+        palabraActual.style.backgroundColor = '#e8f0e8';
+        palabraActual.style.color = '#1e4d2b';
+        palabraActual.style.fontWeight = 'bold';
+      }
+    }
+  };
+
+  window.speechSynthesis.speak(utterance);
+}
+
+// Conectar el botón de la historia con la función nueva
+document.addEventListener("click", (e) => {
+  if (e.target.closest('.listen-button') && !e.target.closest('.vault-card')) {
+    e.preventDefault(); 
+    const texto = document.getElementById('historia-texto').innerText.trim();
+    if (texto) {
+      leerHistoriaConResaltado(texto);
+    }
+  }
 });
