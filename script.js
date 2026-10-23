@@ -2788,58 +2788,60 @@ speedButtons.forEach((button) => {
 listenButtons.forEach((button) => {
   button.addEventListener("click", speakCurrentStory);
 });
-// --- PARCHE FINAL v4: BUSCA EL TEXTO EN FRANCÉS ---
+// --- PARCHE FINAL v7: LEE EL FRANCÉS DIRECTO DE LA BASE DE DATOS ---
 document.addEventListener('click', (e) => {
   if (e.target.closest('.listen-button') && !e.target.closest('.vault-card')) {
     e.preventDefault();
     e.stopPropagation();
 
-    if (!("speechSynthesis" in window)) {
-      alert("La síntesis de voz no está disponible en este navegador.");
-      return;
-    }
-
-    const contenedor = document.getElementById('historia-texto');
-    if (!contenedor) return;
+    if (!("speechSynthesis" in window)) return;
 
     const boton = e.target.closest('.listen-button');
+    const tituloHistoria = document.getElementById('reader-title')?.innerText;
+    
+    // 1. Buscamos la historia original en el array global 'stories'
+    let historiaOriginal = null;
+    if (window.stories && Array.isArray(window.stories)) {
+        historiaOriginal = window.stories.find(s => s.tema === tituloHistoria);
+    }
 
-    // Si ya está hablando, lo detenemos
+    // 2. Si la encontramos, usamos su texto en francés
+    if (!historiaOriginal) {
+        alert("No se encontró la historia original para leer.");
+        return;
+    }
+
+    const textoFrances = historiaOriginal.textoFrances;
+
+    // 3. Detener si ya está hablando
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
-      boton.innerHTML = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/></svg><span>Écouter</span>';
+      boton.innerHTML = '<span>Écouter</span>';
       return;
     }
 
-    // --- LA CLAVE: Buscar la historia actual en el array global 'stories' ---
-    // Asumimos que el título está en el h1 con id "reader-title"
-    const tituloHistoria = document.getElementById('reader-title')?.innerText;
-    
-    // Buscamos la historia por su título (tema)
-    const historiaGuardada = window.stories?.find(s => s.tema === tituloHistoria);
-    
-    // Si la encontramos, usamos su texto en francés. Si no, usamos el texto de la pantalla.
-    const textoFrances = historiaGuardada ? historiaGuardada.textoFrances : contenedor.innerText.trim();
-    
-    if (!textoFrances) return;
+    // 4. Redibujar el texto en francés en pantalla (para que veas el karaoke)
+    const contenedor = document.getElementById('historia-texto');
+    if (contenedor) {
+        contenedor.innerHTML = '';
+        const palabras = textoFrances.split(' ');
+        palabras.forEach((palabra, index) => {
+          const span = document.createElement('span');
+          span.innerText = palabra + ' ';
+          span.id = `palabra-${index}`;
+          span.style.transition = 'background-color 0.2s, color 0.2s';
+          contenedor.appendChild(span);
+        });
+    }
 
-    // Preparamos el karaoke con el texto en francés
-    contenedor.innerHTML = '';
-    const palabras = textoFrances.split(' ');
-    palabras.forEach((palabra, index) => {
-      const span = document.createElement('span');
-      span.innerText = palabra + ' ';
-      span.id = `palabra-${index}`;
-      span.style.transition = 'background-color 0.2s, color 0.2s';
-      contenedor.appendChild(span);
-    });
-
+    // 5. Configurar la voz
     const utterance = new SpeechSynthesisUtterance(textoFrances);
     utterance.lang = 'fr-FR';
     
     const botonVelocidad = document.querySelector('.speed-button.is-selected');
     utterance.rate = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
 
+    // 6. Efecto Karaoke
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
         const charIndex = event.charIndex;
@@ -2861,14 +2863,16 @@ document.addEventListener('click', (e) => {
       }
     };
 
+    // 7. Restaurar botón al terminar
     utterance.addEventListener("end", () => {
-      boton.innerHTML = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/></svg><span>Écouter</span>';
+      boton.innerHTML = '<span>Écouter</span>';
     });
     utterance.addEventListener("error", () => {
-      boton.innerHTML = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/></svg><span>Écouter</span>';
+      boton.innerHTML = '<span>Écouter</span>';
     });
 
-    boton.innerHTML = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/></svg><span>Arrêter</span>';
+    // 8. Cambiar botón y reproducir
+    boton.innerHTML = '<span>Arrêter</span>';
     window.speechSynthesis.speak(utterance);
   }
 });
