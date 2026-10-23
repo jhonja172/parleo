@@ -2788,10 +2788,12 @@ speedButtons.forEach((button) => {
 listenButtons.forEach((button) => {
   button.addEventListener("click", speakCurrentStory);
 });
-// --- PARCHE FINAL v2: LEE EL TEXTO DIRECTO DE LA PANTALLA ---
+// --- PARCHE FINAL v3: KARAOKE Y BOTÓN FUNCIONAL ---
 document.addEventListener('click', (e) => {
+  // Solo actuar si es el botón de escuchar de la historia (no el del baúl)
   if (e.target.closest('.listen-button') && !e.target.closest('.vault-card')) {
     e.preventDefault();
+    e.stopPropagation(); // Evita que el código viejo interfiera
 
     if (!("speechSynthesis" in window)) {
       alert("La síntesis de voz no está disponible en este navegador.");
@@ -2801,20 +2803,20 @@ document.addEventListener('click', (e) => {
     const contenedor = document.getElementById('historia-texto');
     if (!contenedor) return;
 
-    // 1. Extraemos el texto directamente de lo que se ve en pantalla
-    const texto = contenedor.innerText.trim();
-    if (!texto) {
-      alert("No hay texto para leer.");
-      return;
-    }
+    const boton = e.target.closest('.listen-button');
 
     // Si ya está hablando, lo detenemos
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
+      boton.innerHTML = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/></svg><span>Écouter</span>';
       return;
     }
 
-    // 2. Preparamos el contenedor para el karaoke
+    // Extraemos el texto de la pantalla
+    const texto = contenedor.innerText.trim();
+    if (!texto) return;
+
+    // Preparamos el karaoke
     contenedor.innerHTML = '';
     const palabras = texto.split(' ');
     palabras.forEach((palabra, index) => {
@@ -2825,15 +2827,15 @@ document.addEventListener('click', (e) => {
       contenedor.appendChild(span);
     });
 
-    // 3. Configuramos la voz
+    // Configuramos la voz
     const utterance = new SpeechSynthesisUtterance(texto);
     utterance.lang = 'fr-FR';
     
-    // Obtenemos la velocidad del botón seleccionado
+    // Velocidad
     const botonVelocidad = document.querySelector('.speed-button.is-selected');
     utterance.rate = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
 
-    // 4. Efecto karaoke
+    // Efecto karaoke
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
         const charIndex = event.charIndex;
@@ -2855,7 +2857,18 @@ document.addEventListener('click', (e) => {
       }
     };
 
-    // 5. Reproducir
+    // Manejar el final de la lectura para restaurar el botón
+    utterance.addEventListener("end", () => {
+      boton.innerHTML = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/></svg><span>Écouter</span>';
+    });
+    utterance.addEventListener("error", () => {
+      boton.innerHTML = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/></svg><span>Écouter</span>';
+    });
+
+    // Cambiamos el botón a "Arrêter"
+    boton.innerHTML = '<svg class="play-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.8c0-.8.9-1.3 1.6-.9l9.2 5.3a1 1 0 0 1 0 1.7l-9.2 5.3c-.7.4-1.6-.1-1.6-.9V5.8Z" fill="currentColor"/></svg><span>Arrêter</span>';
+
+    // Reproducimos
     window.speechSynthesis.speak(utterance);
   }
 });
