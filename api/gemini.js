@@ -96,11 +96,29 @@ module.exports = async function handler(request, response) {
     ) {
       return response.status(400).json({ error: "El formato de respuesta no es válido." });
     }
+    if (
+      config.thinkingConfig !== undefined &&
+      (config.thinkingConfig === null ||
+        typeof config.thinkingConfig !== "object" ||
+        Array.isArray(config.thinkingConfig) ||
+        !["MINIMAL", "LOW", "MEDIUM", "HIGH"].includes(
+          config.thinkingConfig.thinkingLevel,
+        ))
+    ) {
+      return response.status(400).json({ error: "El nivel de pensamiento no es válido." });
+    }
     if (config.responseMimeType !== undefined) {
       generationConfig.responseMimeType = config.responseMimeType;
     }
+    if (config.thinkingConfig !== undefined) {
+      generationConfig.thinkingConfig = {
+        thinkingLevel: config.thinkingConfig.thinkingLevel,
+      };
+    }
   }
-  generationConfig.thinkingConfig = { thinkingLevel: "LOW" };
+  if (generationConfig.thinkingConfig === undefined) {
+    generationConfig.thinkingConfig = { thinkingLevel: "LOW" };
+  }
 
   const geminiRequest = {
     contents: hasPrompt

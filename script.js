@@ -92,6 +92,7 @@ const storyLevel = document.querySelector("#story-level");
 const storyType = document.querySelector("#story-type");
 const formStatus = document.querySelector("#form-status");
 const libraryStatus = document.querySelector("#library-status");
+const retryShortStoryButton = document.querySelector("#retry-short-story-button");
 const storyList = document.querySelector("#story-list");
 const julieView = document.querySelector("#julie-view");
 const buildStoryContext = document.querySelector("#build-story-context");
@@ -173,6 +174,7 @@ let vaultPlaybackRate = 0.75;
 let isSpeaking = false;
 let translationRequestId = 0;
 let currentUser = null;
+let pendingShortStoryRequest = null;
 let selectedRegistrationAvatar = AVATAR_OPTIONS[0].url;
 let activeVaultSpeech = null;
 let julieConversation = [];
@@ -986,7 +988,9 @@ function isStoredStory(value) {
     typeof value.tipo === "string" &&
     typeof value.textoFrances === "string" &&
     typeof value.textoEspanol === "string" &&
-    (value.advertencia === undefined || typeof value.advertencia === "string")
+    (value.advertencia === undefined || typeof value.advertencia === "string") &&
+    (value.demasiadoCorta === undefined ||
+      typeof value.demasiadoCorta === "boolean")
   );
 }
 
@@ -1154,7 +1158,7 @@ function renderInteractiveStory(text) {
   frenchStory.replaceChildren(fragment);
 }
 
-async function createStory(theme, level, type, onStage) {
+async function createStory(theme, level, type) {
   const validTypes = [
     "Narración",
     "Diálogo",
@@ -1176,91 +1180,46 @@ async function createStory(theme, level, type, onStage) {
   const previousContext = previousStories
     ? `Historias anteriores. No reutilices sus personajes, sucesos, frases ni estructuras:\n${previousStories}`
     : "No hay historias anteriores.";
-  onStage?.("Generando esquema…");
-  const outlineText = await requestGeminiText(
-    "Eres un planificador creativo de historias en francés. " +
-      `Prepara únicamente el esquema de una historia original sobre: ${theme}. ` +
-      `Nivel: ${level}. Tipo: ${type}. Escribe exactamente tres frases cortas ` +
-      "en francés: una para el inicio, una para el nudo y una para el desenlace. " +
-      `${previousContext} Devuelve solo JSON válido con las claves inicio, nudo y desenlace.`,
-    { generationConfig: { responseMimeType: "application/json" } },
+  const storyText = await requestGeminiText(
+    "Eres un escritor creativo de historias en francés. " +
+      `Escribe una historia completamente original en francés sobre ${theme} para el nivel ${level}. ` +
+      `La historia debe ser concisa y coherente. No repitas frases. Escribe de forma natural. ` +
+      `Tipo: ${type}. Usa ${levelRules.guidance}. ` +
+      "Desarrolla un inicio, un nudo y un desenlace claros, sin frases de relleno. " +
+      `${previousContext}\n\n` +
+      "Devuelve únicamente un JSON válido con las propiedades textoFrances y " +
+      "textoEspanol; la primera debe contener la historia en francés y la segunda " +
+      "su traducción natural al español.",
+    {
+      generationConfig: {
+        responseMimeType: "application/json",
+        thinkingConfig: { thinkingLevel: "MINIMAL" },
+      },
+    },
   );
 
-  let outline;
+  let generated;
   try {
-    outline = JSON.parse(outlineText);
+    generated = JSON.parse(storyText);
   } catch {
-    throw new Error("Gemini no devolvió un esquema válido.");
+    throw new Error("Gemini no devolvió una historia en formato JSON válido.");
   }
   if (
-    !outline ||
-    ["inicio", "nudo", "desenlace"].some(
-      (part) => typeof outline[part] !== "string" || !outline[part].trim(),
-    )
+    typeof generated.textoFrances !== "string" ||
+    !generated.textoFrances.trim() ||
+    typeof generated.textoEspanol !== "string" ||
+    !generated.textoEspanol.trim()
   ) {
-    throw new Error("Gemini devolvió un esquema incompleto.");
+    throw new Error("Gemini devolvió una historia incompleta.");
   }
 
-  onStage?.("Redactando historia…");
-  const storyPrompt =
-    "Eres un escritor creativo de historias en francés. " +
-    `Escribe una historia completamente original en francés sobre ${theme} para el nivel ${level}. ` +
-    `La historia debe tener exactamente ${levelRules.words} palabras. ` +
-    "Es crucial que respetes esta longitud. NO uses frases de relleno ni repitas la misma oración. " +
-    "Si te acercas al final, concluye la historia de forma natural. " +
-    `Tipo: ${type}. Usa ${levelRules.guidance}. ` +
-    "Desarrolla este esquema sin cambiar su inicio, conflicto y desenlace:\n" +
-    `Inicio: ${outline.inicio}\nNudo: ${outline.nudo}\nDesenlace: ${outline.desenlace}\n\n` +
-    `${previousContext}\n\n` +
-    `La versión francesa debe estar entre ${levelRules.minWords} y ${levelRules.maxWords} palabras. ` +
-    "Devuelve únicamente un JSON válido con las propiedades textoFrances y " +
-    "textoEspanol; la primera debe contener la historia en francés y la segunda " +
-    "su traducción natural al español.";
-
-  let generated;
-  let frenchText = "";
-  let storyWordCount = 0;
-  let lengthWarning = "";
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (attempt === 1) {
-      onStage?.(
-        "La historia no cumple con la longitud exacta para este nivel. Generando de nuevo...",
-      );
-    }
-    const storyText = await requestGeminiText(storyPrompt, {
-      generationConfig: { responseMimeType: "application/json" },
-    });
-
-    try {
-      generated = JSON.parse(storyText);
-    } catch {
-      throw new Error("Gemini no devolvió una historia en formato JSON válido.");
-    }
-    if (
-      typeof generated.textoFrances !== "string" ||
-      !generated.textoFrances.trim() ||
-      typeof generated.textoEspanol !== "string" ||
-      !generated.textoEspanol.trim()
-    ) {
-      throw new Error("Gemini devolvió una historia incompleta.");
-    }
-
-    frenchText = generated.textoFrances.trim();
-    storyWordCount = frenchText.replace(/\s+/g, " ").split(" ").length;
-    if (
-      storyWordCount >= levelRules.minWords &&
-      storyWordCount <= levelRules.maxWords
-    ) {
-      break;
-    }
-    if (attempt === 1) {
-      const lengthDescription =
-        storyWordCount < levelRules.words ? "más corta" : "más larga";
-      lengthWarning =
-        `La historia tiene ${storyWordCount} palabras (objetivo: ${levelRules.words}). ` +
-        `Puedes practicar con ella, pero ten en cuenta que es un poco ${lengthDescription}.`;
-    }
-  }
+  const frenchText = generated.textoFrances.trim();
+  const storyWordCount = frenchText.replace(/\s+/g, " ").split(" ").length;
+  const lengthWarning =
+    storyWordCount < levelRules.words * 0.95 ||
+    storyWordCount > levelRules.words * 1.05
+      ? `Nota: La historia tiene ${storyWordCount} palabras (objetivo: ${levelRules.words}). Puedes practicar con ella igualmente.`
+      : "";
 
   if (
     frenchText.toLocaleLowerCase("fr-FR").includes("la journée est belle") ||
@@ -1279,6 +1238,9 @@ async function createStory(theme, level, type, onStage) {
     textoFrances: frenchText,
     textoEspanol: generated.textoEspanol.trim(),
     ...(lengthWarning ? { advertencia: lengthWarning } : {}),
+    ...(storyWordCount < levelRules.words * 0.7
+      ? { demasiadoCorta: true }
+      : {}),
   };
 }
 
@@ -2352,6 +2314,8 @@ studentSummary.addEventListener("input", () => {
 storyForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   formStatus.textContent = "";
+  pendingShortStoryRequest = null;
+  retryShortStoryButton.hidden = true;
 
   if (storageError) {
     formStatus.textContent = "Corrige el problema de almacenamiento antes de guardar una historia.";
@@ -2369,22 +2333,26 @@ storyForm.addEventListener("submit", async (event) => {
   submitButton.disabled = true;
   submitButton.querySelector("span").textContent = "Creando historia…";
   try {
-    const story = await createStory(
-      theme,
-      storyLevel.value,
-      storyType.value,
-      (stage) => {
-        formStatus.textContent = stage;
-      },
-    );
+    const story = await createStory(theme, selectedLevel, storyType.value);
     if (!(await saveStories([story, ...stories]))) {
       return;
     }
-    formStatus.textContent = story.advertencia || "";
+    const shortStory = story.demasiadoCorta === true;
+    if (shortStory) {
+      pendingShortStoryRequest = {
+        theme,
+        level: selectedLevel,
+        type: storyType.value,
+      };
+    }
     storyForm.reset();
     storyLevel.value = selectedLevel;
     setMainTab("library");
     renderStories();
+    libraryStatus.textContent = shortStory
+      ? "La historia es muy corta, ¿quieres intentarlo de nuevo?"
+      : storageError;
+    retryShortStoryButton.hidden = !shortStory;
   } catch (error) {
     formStatus.textContent =
       error.message ===
@@ -2395,6 +2363,23 @@ storyForm.addEventListener("submit", async (event) => {
     submitButton.disabled = false;
     submitButton.querySelector("span").textContent = "Generar Historia";
   }
+});
+
+retryShortStoryButton.addEventListener("click", () => {
+  if (!pendingShortStoryRequest) {
+    retryShortStoryButton.hidden = true;
+    return;
+  }
+
+  const retryRequest = pendingShortStoryRequest;
+  pendingShortStoryRequest = null;
+  retryShortStoryButton.hidden = true;
+  libraryStatus.textContent = "";
+  storyTheme.value = retryRequest.theme;
+  storyLevel.value = retryRequest.level;
+  storyType.value = retryRequest.type;
+  setMainTab("create");
+  storyForm.requestSubmit();
 });
 
 profileForm.addEventListener("submit", async (event) => {

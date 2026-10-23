@@ -456,6 +456,11 @@ h1 span {
   line-height: 1.5;
 }
 
+.retry-short-story-button {
+  margin: 0 0 14px;
+  padding: 0 18px;
+}
+
 .library-heading {
   display: flex;
   align-items: center;
