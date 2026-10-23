@@ -10,22 +10,35 @@ const READ_STORIES_STORAGE_KEY = "parleoReadStories.v1";
 const STORY_PROGRESS_GOAL = 10;
 const VAULT_PLAYBACK_RATES = [0.75, 0.85, 1];
 const LEVEL_CONFIG = {
-  A1: { words: 150, guidance: "vocabulario muy básico y frases cortas" },
+  A1: {
+    words: 150,
+    minWords: 142,
+    maxWords: 158,
+    guidance: "vocabulario muy básico y frases cortas",
+  },
   A2: {
     words: 250,
+    minWords: 237,
+    maxWords: 263,
     guidance:
       "conectores simples (et, mais, parce que) y tiempos como passé composé e imparfait",
   },
   B1: {
     words: 450,
+    minWords: 427,
+    maxWords: 473,
     guidance: "incluye subjonctif, conditionnel y vocabulario más amplio",
   },
   B2: {
     words: 550,
+    minWords: 522,
+    maxWords: 578,
     guidance: "vocabulario avanzado, expresiones idiomáticas y estructuras formales",
   },
   C1: {
     words: 650,
+    minWords: 617,
+    maxWords: 683,
     guidance:
       "vocabulario experto, expresiones literarias y estructuras complejas",
   },
@@ -1189,41 +1202,66 @@ async function createStory(theme, level, type, onStage) {
   }
 
   onStage?.("Redactando historia…");
-  const storyText = await requestGeminiText(
+  const storyPrompt =
     "Eres un escritor creativo de historias en francés. " +
-      `Escribe una historia en francés sobre ${theme} para el nivel ${level}. ` +
-      `Tipo: ${type}. La historia debe tener aproximadamente ${levelRules.words} palabras ` +
-      `y usar ${levelRules.guidance}. Reglas obligatorias: ` +
-    "1) NO uses frases de relleno ni repitas la misma oración. " +
-    "2) La historia debe tener un inicio, un nudo y un desenlace claros. " +
-    "3) PROHIBIDO usar frases de relleno o repetir la misma oración. " +
-      "Si no puedes completar la historia de forma natural, termina antes. " +
-      "NO empieces con 'Aujourd'hui, une histoire sur...'. " +
-      "Desarrolla este esquema sin cambiar su inicio, conflicto y desenlace:\n" +
-      `Inicio: ${outline.inicio}\nNudo: ${outline.nudo}\nDesenlace: ${outline.desenlace}\n\n` +
-      `${previousContext}\n\n` +
-      "Devuelve únicamente un JSON válido con las propiedades textoFrances y " +
-      "textoEspanol; la primera debe contener la historia en francés y la segunda " +
-      "su traducción natural al español.",
-    { generationConfig: { responseMimeType: "application/json" } },
-  );
+    `Escribe una historia completamente original en francés sobre ${theme} para el nivel ${level}. ` +
+    `La historia debe tener exactamente ${levelRules.words} palabras. ` +
+    "Es crucial que respetes esta longitud. NO uses frases de relleno ni repitas la misma oración. " +
+    "Si te acercas al final, concluye la historia de forma natural. " +
+    `Tipo: ${type}. Usa ${levelRules.guidance}. ` +
+    "Desarrolla este esquema sin cambiar su inicio, conflicto y desenlace:\n" +
+    `Inicio: ${outline.inicio}\nNudo: ${outline.nudo}\nDesenlace: ${outline.desenlace}\n\n` +
+    `${previousContext}\n\n` +
+    `La versión francesa debe estar entre ${levelRules.minWords} y ${levelRules.maxWords} palabras. ` +
+    "Devuelve únicamente un JSON válido con las propiedades textoFrances y " +
+    "textoEspanol; la primera debe contener la historia en francés y la segunda " +
+    "su traducción natural al español.";
 
   let generated;
-  try {
-    generated = JSON.parse(storyText);
-  } catch {
-    throw new Error("Gemini no devolvió una historia en formato JSON válido.");
-  }
-  if (
-    typeof generated.textoFrances !== "string" ||
-    !generated.textoFrances.trim() ||
-    typeof generated.textoEspanol !== "string" ||
-    !generated.textoEspanol.trim()
-  ) {
-    throw new Error("Gemini devolvió una historia incompleta.");
+  let frenchText = "";
+  let storyWordCount = 0;
+  let lengthWarning = "";
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    if (attempt === 1) {
+      onStage?.(
+        "La historia no cumple con la longitud exacta para este nivel. Generando de nuevo...",
+      );
+    }
+    const storyText = await requestGeminiText(storyPrompt, {
+      generationConfig: { responseMimeType: "application/json" },
+    });
+
+    try {
+      generated = JSON.parse(storyText);
+    } catch {
+      throw new Error("Gemini no devolvió una historia en formato JSON válido.");
+    }
+    if (
+      typeof generated.textoFrances !== "string" ||
+      !generated.textoFrances.trim() ||
+      typeof generated.textoEspanol !== "string" ||
+      !generated.textoEspanol.trim()
+    ) {
+      throw new Error("Gemini devolvió una historia incompleta.");
+    }
+
+    frenchText = generated.textoFrances.trim();
+    storyWordCount = frenchText.replace(/\s+/g, " ").split(" ").length;
+    if (
+      storyWordCount >= levelRules.minWords &&
+      storyWordCount <= levelRules.maxWords
+    ) {
+      break;
+    }
+    if (attempt === 1) {
+      const lengthDescription =
+        storyWordCount < levelRules.words ? "más corta" : "más larga";
+      lengthWarning =
+        `La historia tiene ${storyWordCount} palabras (objetivo: ${levelRules.words}). ` +
+        `Puedes practicar con ella, pero ten en cuenta que es un poco ${lengthDescription}.`;
+    }
   }
 
-  const frenchText = generated.textoFrances.trim();
   if (
     frenchText.toLocaleLowerCase("fr-FR").includes("la journée est belle") ||
     hasRepeatedLongSentence(frenchText)
@@ -1232,10 +1270,6 @@ async function createStory(theme, level, type, onStage) {
       "La historia se ha generado con errores. Por favor, intenta de nuevo",
     );
   }
-  const shortStoryWarning =
-    countWords(frenchText) < levelRules.words * 0.8
-      ? "La historia es un poco corta para este nivel, pero puedes practicar con ella"
-      : "";
 
   return {
     id: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
@@ -1244,7 +1278,7 @@ async function createStory(theme, level, type, onStage) {
     tipo: type,
     textoFrances: frenchText,
     textoEspanol: generated.textoEspanol.trim(),
-    ...(shortStoryWarning ? { advertencia: shortStoryWarning } : {}),
+    ...(lengthWarning ? { advertencia: lengthWarning } : {}),
   };
 }
 
