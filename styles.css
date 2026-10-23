@@ -1089,6 +1089,55 @@ h1 span {
   outline-offset: 3px;
 }
 
+.julie-pronunciation-target {
+  align-self: flex-start;
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 8px;
+  color: var(--green-dark);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.julie-pronunciation-target.is-practicing {
+  background: #fff1bd;
+  box-shadow: 0 0 0 2px #e5bd5f;
+}
+
+.julie-practice-pronunciation-button {
+  align-self: flex-start;
+  min-height: 46px;
+  max-width: 100%;
+  padding: 10px 14px;
+  border: 1px solid #d3a09a;
+  border-radius: 9px;
+  background: #fff7f5;
+  color: #8e4039;
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: left;
+  transition: background 150ms ease, border-color 150ms ease;
+}
+
+.julie-practice-pronunciation-button:hover {
+  border-color: #b94c43;
+  background: #fcebe8;
+}
+
+.julie-practice-pronunciation-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.julie-practice-pronunciation-button:focus-visible {
+  outline: 3px solid #c99655;
+  outline-offset: 3px;
+}
+
 .julie-chat-status {
   min-height: 16px;
   margin: -7px 0 0;
@@ -1221,6 +1270,14 @@ h1 span {
 .julie-microphone-button:focus-visible {
   outline: 3px solid #c99655;
   outline-offset: 3px;
+}
+
+@media (max-width: 480px) {
+  .julie-practice-pronunciation-button {
+    width: 100%;
+    min-height: 48px;
+    text-align: center;
+  }
 }
 
 @keyframes microphone-pulse {

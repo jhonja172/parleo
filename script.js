@@ -176,6 +176,7 @@ let translationRequestId = 0;
 let currentUser = null;
 let pendingShortStoryRequest = null;
 let julieRecognitionFailed = false;
+let activePronunciationPractice = null;
 let selectedRegistrationAvatar = AVATAR_OPTIONS[0].url;
 let activeVaultSpeech = null;
 let julieConversation = [];
@@ -1278,6 +1279,10 @@ function setMainTab(selectedTab) {
 
 function setPrimaryView(viewId) {
   if (viewId !== "julie-view") {
+    activePronunciationPractice = null;
+    julieChatHistory
+      .querySelectorAll(".julie-pronunciation-target.is-practicing")
+      .forEach((element) => element.classList.remove("is-practicing"));
     stopJulieRecognition();
     stopJulieSpeech();
   }
@@ -1556,6 +1561,31 @@ function appendSlowCorrectionButton(phrase) {
   julieChatHistory.scrollTop = julieChatHistory.scrollHeight;
 }
 
+function appendPronunciationPractice(target) {
+  const phrase = document.createElement("p");
+  phrase.className = "julie-pronunciation-target";
+  phrase.textContent = target;
+
+  const button = document.createElement("button");
+  button.className = "julie-practice-pronunciation-button";
+  button.type = "button";
+  button.textContent = "🎤 Practicar esta palabra";
+  button.setAttribute("aria-label", `Practicar pronunciación: ${target}`);
+  button.addEventListener("click", () => {
+    julieChatHistory
+      .querySelectorAll(".julie-pronunciation-target.is-practicing")
+      .forEach((element) => element.classList.remove("is-practicing"));
+    const practice = { target };
+    activePronunciationPractice = practice;
+    phrase.classList.add("is-practicing");
+    julieChatStatus.textContent = "";
+    void runPronunciationPractice(practice, phrase);
+  });
+
+  julieChatHistory.append(phrase, button);
+  julieChatHistory.scrollTop = julieChatHistory.scrollHeight;
+}
+
 function updateJulieControls() {
   const isListening = julieRecognition !== null;
   const micBlocked = isJulieSpeaking || isJulieReplyPending;
@@ -1570,7 +1600,9 @@ function updateJulieControls() {
   julieSendButton.disabled = isJulieReplyPending;
   julieMessage.disabled = isJulieReplyPending;
   julieChatHistory
-    .querySelectorAll(".julie-slow-correction-button")
+    .querySelectorAll(
+      ".julie-slow-correction-button, .julie-practice-pronunciation-button",
+    )
     .forEach((button) => {
       button.disabled = micBlocked;
     });
@@ -1741,6 +1773,11 @@ async function sendJulieMessage(message) {
     if (response.correctedPhrase) {
       appendSlowCorrectionButton(response.correctedPhrase);
     }
+    const pronunciationTarget =
+      response.correctedPhrase || (wasDictation ? message : "");
+    if (pronunciationTarget) {
+      appendPronunciationPractice(pronunciationTarget);
+    }
     if (julieMessage.value.trim() === message) {
       julieMessage.value = "";
     }
@@ -1760,6 +1797,13 @@ async function sendJulieMessage(message) {
 
 function startJulieRecognition() {
   if (isJulieSpeaking || isJulieReplyPending) {
+    return;
+  }
+
+  if (activePronunciationPractice) {
+    activePronunciationPractice = null;
+    stopJulieRecognition();
+    julieChatStatus.textContent = "Práctica de pronunciación detenida.";
     return;
   }
 
@@ -1829,6 +1873,144 @@ function startJulieRecognition() {
     updateJulieControls();
     julieChatStatus.textContent =
       "No te he entendido bien. ¿Puedes repetirlo?";
+  }
+}
+
+function normalizePronunciationText(text) {
+  return text
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("fr-FR")
+    .replace(/[^\p{L}\p{N}\s]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function pronunciationSimilarity(expected, actual) {
+  const left = normalizePronunciationText(expected);
+  const right = normalizePronunciationText(actual);
+  if (!left || !right) {
+    return 0;
+  }
+
+  const previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    let diagonal = previous[0];
+    previous[0] = row;
+    for (let column = 1; column <= right.length; column += 1) {
+      const above = previous[column];
+      const substitutionCost = left[row - 1] === right[column - 1] ? 0 : 1;
+      previous[column] = Math.min(
+        previous[column] + 1,
+        previous[column - 1] + 1,
+        diagonal + substitutionCost,
+      );
+      diagonal = above;
+    }
+  }
+
+  return 1 - previous[right.length] / Math.max(left.length, right.length);
+}
+
+async function runPronunciationPractice(practice, targetElement) {
+  if (activePronunciationPractice !== practice) {
+    return;
+  }
+  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+    activePronunciationPractice = null;
+    targetElement.classList.remove("is-practicing");
+    julieChatStatus.textContent =
+      "La síntesis de voz no está disponible en este navegador.";
+    return;
+  }
+
+  julieChatStatus.textContent = "Escucha la palabra y repítela después.";
+  await speakJulieReply(practice.target, 0.6);
+  if (activePronunciationPractice !== practice) {
+    return;
+  }
+
+  const SpeechRecognition =
+    window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SpeechRecognition) {
+    activePronunciationPractice = null;
+    targetElement.classList.remove("is-practicing");
+    julieChatStatus.textContent =
+      "El reconocimiento de voz no está disponible en este navegador.";
+    return;
+  }
+
+  const recognition = new SpeechRecognition();
+  recognition.lang = "fr-FR";
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+  julieRecognition = recognition;
+  julieChatStatus.textContent = `Repite: ${practice.target}`;
+  updateJulieControls();
+
+  let transcript = "";
+  let recognitionError = "";
+  recognition.addEventListener("result", (event) => {
+    if (julieRecognition !== recognition) {
+      return;
+    }
+    transcript = Array.from(event.results)
+      .map((result) => result[0]?.transcript || "")
+      .join("")
+      .trim();
+    julieChatStatus.textContent = transcript
+      ? `Te escuché: ${transcript}`
+      : `Repite: ${practice.target}`;
+  });
+  recognition.addEventListener("error", (event) => {
+    if (event.error === "aborted") {
+      return;
+    }
+    recognitionError = event.error;
+  });
+  recognition.addEventListener("end", () => {
+    if (julieRecognition !== recognition) {
+      return;
+    }
+    julieRecognition = null;
+    updateJulieControls();
+    if (activePronunciationPractice !== practice) {
+      return;
+    }
+
+    if (recognitionError === "not-allowed" || recognitionError === "service-not-allowed") {
+      activePronunciationPractice = null;
+      targetElement.classList.remove("is-practicing");
+      julieChatStatus.textContent =
+        "No se pudo acceder al micrófono. Revisa los permisos del navegador.";
+      return;
+    }
+
+    if (pronunciationSimilarity(practice.target, transcript) >= 0.7) {
+      activePronunciationPractice = null;
+      targetElement.classList.remove("is-practicing");
+      appendJulieMessage("model", "¡Excelente pronunciación!");
+      julieChatStatus.textContent = "Práctica completada.";
+      return;
+    }
+
+    julieChatStatus.textContent = "Casi lo tienes, escucha de nuevo.";
+    window.setTimeout(() => {
+      void runPronunciationPractice(practice, targetElement);
+    }, 500);
+  });
+
+  try {
+    recognition.start();
+  } catch {
+    julieRecognition = null;
+    updateJulieControls();
+    julieChatStatus.textContent = "No te he entendido bien. ¿Puedes repetirlo?";
+    window.setTimeout(() => {
+      if (activePronunciationPractice === practice) {
+        void runPronunciationPractice(practice, targetElement);
+      }
+    }, 500);
   }
 }
 
