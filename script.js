@@ -2788,7 +2788,7 @@ speedButtons.forEach((button) => {
 listenButtons.forEach((button) => {
   button.addEventListener("click", speakCurrentStory);
 });
-// --- PARCHE FINAL v7: LEE EL FRANCÉS DIRECTO DE LA BASE DE DATOS ---
+// --- PARCHE FINAL v8: LEE LO QUE ESTÁ EN PANTALLA Y HACE EL KARAOKE ---
 document.addEventListener('click', (e) => {
   if (e.target.closest('.listen-button') && !e.target.closest('.vault-card')) {
     e.preventDefault();
@@ -2797,51 +2797,40 @@ document.addEventListener('click', (e) => {
     if (!("speechSynthesis" in window)) return;
 
     const boton = e.target.closest('.listen-button');
-    const tituloHistoria = document.getElementById('reader-title')?.innerText;
+    const contenedor = document.getElementById('historia-texto');
     
-    // 1. Buscamos la historia original en el array global 'stories'
-    let historiaOriginal = null;
-    if (window.stories && Array.isArray(window.stories)) {
-        historiaOriginal = window.stories.find(s => s.tema === tituloHistoria);
-    }
+    if (!contenedor) return;
 
-    // 2. Si la encontramos, usamos su texto en francés
-    if (!historiaOriginal) {
-        alert("No se encontró la historia original para leer.");
-        return;
-    }
-
-    const textoFrances = historiaOriginal.textoFrances;
-
-    // 3. Detener si ya está hablando
+    // 1. Detener si ya está hablando
     if (window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
       boton.innerHTML = '<span>Écouter</span>';
       return;
     }
 
-    // 4. Redibujar el texto en francés en pantalla (para que veas el karaoke)
-    const contenedor = document.getElementById('historia-texto');
-    if (contenedor) {
-        contenedor.innerHTML = '';
-        const palabras = textoFrances.split(' ');
-        palabras.forEach((palabra, index) => {
-          const span = document.createElement('span');
-          span.innerText = palabra + ' ';
-          span.id = `palabra-${index}`;
-          span.style.transition = 'background-color 0.2s, color 0.2s';
-          contenedor.appendChild(span);
-        });
-    }
+    // 2. Tomar el texto que está visible en pantalla (ya sabemos que está en francés)
+    const textoFrances = contenedor.innerText.trim();
+    if (!textoFrances) return;
 
-    // 5. Configurar la voz
+    // 3. Redibujar el texto en "spans" para el karaoke
+    contenedor.innerHTML = '';
+    const palabras = textoFrances.split(' ');
+    palabras.forEach((palabra, index) => {
+      const span = document.createElement('span');
+      span.innerText = palabra + ' ';
+      span.id = `palabra-${index}`;
+      span.style.transition = 'background-color 0.2s, color 0.2s';
+      contenedor.appendChild(span);
+    });
+
+    // 4. Configurar la voz
     const utterance = new SpeechSynthesisUtterance(textoFrances);
     utterance.lang = 'fr-FR';
     
     const botonVelocidad = document.querySelector('.speed-button.is-selected');
     utterance.rate = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
 
-    // 6. Efecto Karaoke
+    // 5. Efecto Karaoke (sombreado)
     utterance.onboundary = (event) => {
       if (event.name === 'word') {
         const charIndex = event.charIndex;
@@ -2863,7 +2852,7 @@ document.addEventListener('click', (e) => {
       }
     };
 
-    // 7. Restaurar botón al terminar
+    // 6. Restaurar botón al terminar
     utterance.addEventListener("end", () => {
       boton.innerHTML = '<span>Écouter</span>';
     });
@@ -2871,7 +2860,7 @@ document.addEventListener('click', (e) => {
       boton.innerHTML = '<span>Écouter</span>';
     });
 
-    // 8. Cambiar botón y reproducir
+    // 7. Cambiar botón y reproducir
     boton.innerHTML = '<span>Arrêter</span>';
     window.speechSynthesis.speak(utterance);
   }
