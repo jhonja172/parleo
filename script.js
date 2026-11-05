@@ -218,6 +218,10 @@ let selectedVocabularyCard = null;
 let selectedRate = 0.85;
 let vaultPlaybackRate = 0.75;
 let isSpeaking = false;
+let currentAudio = null;
+let currentStoryAudioUrl = null;
+let currentStorySpeechController = null;
+let karaokeInterval = null;
 let translationRequestId = 0;
 let currentUser = null;
 let pendingShortStoryRequest = null;
@@ -1167,6 +1171,7 @@ function findStoryContextTranslation(context) {
 function renderInteractiveStory(text) {
   const fragment = document.createDocumentFragment();
   const parts = text.split(/(\s+)/);
+  let wordIndex = 0;
 
   parts.forEach((part) => {
     if (/^\s+$/.test(part)) {
@@ -1174,6 +1179,9 @@ function renderInteractiveStory(text) {
       return;
     }
 
+    const wordSpan = document.createElement("span");
+    wordSpan.id = `palabra-${wordIndex}`;
+    wordIndex += 1;
     const wordButton = document.createElement("button");
     wordButton.className = "word-button";
     wordButton.type = "button";
@@ -1200,7 +1208,8 @@ function renderInteractiveStory(text) {
       wordModal.showModal();
       translateWord(word, requestId);
     });
-    fragment.append(wordButton);
+    wordSpan.append(wordButton);
+    fragment.append(wordSpan);
   });
 
   frenchStory.replaceChildren(fragment);
@@ -1233,7 +1242,9 @@ async function createStory(theme, level, type) {
       `Escribe una historia completamente original en francés sobre ${theme} para el nivel ${level}. ` +
       `La historia debe ser concisa y coherente. No repitas frases. Escribe de forma natural. ` +
       `Tipo: ${type}. Usa ${levelRules.guidance}. ` +
-      "Desarrolla un inicio, un nudo y un desenlace claros, sin frases de relleno. " +
+      "Asegúrate de que la historia tenga un inicio, un nudo y un desenlace claros. " +
+      "No uses frases hechas ni repitas estructuras de historias anteriores. " +
+      "El vocabulario y la gramática deben corresponder exactamente al nivel solicitado. " +
       `${previousContext}\n\n` +
       "Devuelve únicamente un JSON válido con las propiedades textoFrances y " +
       "textoEspanol; la primera debe contener la historia en francés y la segunda " +
@@ -2388,40 +2399,168 @@ function setSpeaking(speaking) {
   });
 }
 
-function speakCurrentStory() {
-  if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {
+function releaseCurrentStoryAudio() {
+  if (currentAudio) {
+    currentAudio.pause();
+    currentAudio.removeAttribute("src");
+    currentAudio.load();
+    currentAudio = null;
+  }
+
+  if (currentStoryAudioUrl) {
+    URL.revokeObjectURL(currentStoryAudioUrl);
+    currentStoryAudioUrl = null;
+  }
+}
+
+function clearKaraoke() {
+  if (karaokeInterval !== null) {
+    window.clearInterval(karaokeInterval);
+    karaokeInterval = null;
+  }
+  frenchStory.querySelectorAll("[id^='palabra-']").forEach((word) => {
+    word.style.backgroundColor = "transparent";
+    word.style.fontWeight = "normal";
+  });
+}
+
+function startKaraoke(audio) {
+  clearKaraoke();
+  const words = frenchStory.querySelectorAll("[id^='palabra-']");
+  if (!Number.isFinite(audio.duration) || audio.duration <= 0 || !words.length) {
+    return;
+  }
+
+  const interval = (audio.duration * 1000) / words.length;
+  let wordIndex = 0;
+  const highlightNextWord = () => {
+    if (wordIndex >= words.length) {
+      return;
+    }
+    words.forEach((word) => {
+      word.style.backgroundColor = "transparent";
+      word.style.fontWeight = "normal";
+    });
+    const currentWord = frenchStory.querySelector(`#palabra-${wordIndex}`);
+    if (currentWord) {
+      currentWord.style.backgroundColor = "#e8f0e8";
+      currentWord.style.fontWeight = "bold";
+    }
+    wordIndex += 1;
+  };
+  highlightNextWord();
+  karaokeInterval = window.setInterval(highlightNextWord, interval);
+}
+
+function stopCurrentStorySpeech() {
+  if (currentStorySpeechController) {
+    currentStorySpeechController.abort();
+    currentStorySpeechController = null;
+  }
+  clearKaraoke();
+  releaseCurrentStoryAudio();
+  setSpeaking(false);
+}
+
+async function speakCurrentStory() {
+  if (isSpeaking) {
+    stopCurrentStorySpeech();
     speechStatuses.forEach((status) => {
-      status.textContent = "La synthèse vocale n’est pas disponible dans ce navigateur.";
+      status.textContent = "";
     });
     return;
   }
 
-  if (isSpeaking) {
-    window.speechSynthesis.cancel();
-    setSpeaking(false);
+  if (!currentStory?.textoFrances) {
     return;
   }
 
-  if (!currentStory) {
-    return;
-  }
-
-  const utterance = new SpeechSynthesisUtterance(currentStory.textoFrances);
-  utterance.lang = "fr-FR";
-  utterance.rate = selectedRate;
-  utterance.addEventListener("end", () => setSpeaking(false));
-  utterance.addEventListener("error", (event) => {
-    setSpeaking(false);
-    if (event.error !== "canceled" && event.error !== "interrupted") {
-      speechStatuses.forEach((status) => {
-        status.textContent = `La lecture a échoué : ${event.error}.`;
-      });
-    }
+  const controller = new AbortController();
+  currentStorySpeechController = controller;
+  setSpeaking(true);
+  speechStatuses.forEach((status) => {
+    status.textContent = "Préparation de la lecture…";
   });
 
-  window.speechSynthesis.cancel();
-  setSpeaking(true);
-  window.speechSynthesis.speak(utterance);
+  try {
+    const response = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        text: currentStory.textoFrances,
+        rate: selectedRate,
+      }),
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      const payload = await response.json();
+      throw new Error(
+        payload.error || `Le service vocal a répondu avec HTTP ${response.status}.`,
+      );
+    }
+
+    const audioBlob = await response.blob();
+    if (!audioBlob.size) {
+      throw new Error("Le service vocal n’a renvoyé aucun audio.");
+    }
+    if (currentStorySpeechController !== controller) {
+      return;
+    }
+
+    currentStoryAudioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(currentStoryAudioUrl);
+    currentAudio = audio;
+    audio.playbackRate = selectedRate;
+    audio.addEventListener("loadedmetadata", () => {
+      if (currentAudio === audio) {
+        startKaraoke(audio);
+      }
+    });
+    audio.addEventListener("ended", () => {
+      if (currentAudio !== audio) {
+        return;
+      }
+      currentStorySpeechController = null;
+      clearKaraoke();
+      releaseCurrentStoryAudio();
+      setSpeaking(false);
+    });
+    audio.addEventListener("error", () => {
+      if (currentAudio !== audio) {
+        return;
+      }
+      currentStorySpeechController = null;
+      clearKaraoke();
+      releaseCurrentStoryAudio();
+      setSpeaking(false);
+      speechStatuses.forEach((status) => {
+        status.textContent = "La lecture audio a échoué.";
+      });
+    });
+    await audio.play();
+    if (currentAudio === audio && Number.isFinite(audio.duration)) {
+      startKaraoke(audio);
+    }
+    if (currentStorySpeechController === controller) {
+      speechStatuses.forEach((status) => {
+        status.textContent = "Lecture en cours…";
+      });
+    }
+  } catch (error) {
+    if (currentStorySpeechController !== controller) {
+      return;
+    }
+    currentStorySpeechController = null;
+    releaseCurrentStoryAudio();
+    setSpeaking(false);
+    if (error.name !== "AbortError") {
+      console.error("No se pudo reproducir la historia:", error);
+      speechStatuses.forEach((status) => {
+        status.textContent = `La lecture a échoué : ${error.message}`;
+      });
+    }
+  }
 }
 
 async function initializeAuthentication() {
@@ -2761,10 +2900,7 @@ wordModal.addEventListener("click", (event) => {
 });
 
 backButton.addEventListener("click", () => {
-  if (isSpeaking && "speechSynthesis" in window) {
-    window.speechSynthesis.cancel();
-    setSpeaking(false);
-  }
+  stopCurrentStorySpeech();
   currentStory = null;
   readerView.hidden = true;
   primaryNav.hidden = false;
@@ -2786,81 +2922,4 @@ speedButtons.forEach((button) => {
 
 listenButtons.forEach((button) => {
   button.addEventListener("click", speakCurrentStory);
-});
-// --- PARCHE FINAL v8: LEE LO QUE ESTÁ EN PANTALLA Y HACE EL KARAOKE ---
-document.addEventListener('click', (e) => {
-  if (e.target.closest('.listen-button') && !e.target.closest('.vault-card')) {
-    e.preventDefault();
-    e.stopPropagation();
-
-    if (!("speechSynthesis" in window)) return;
-
-    const boton = e.target.closest('.listen-button');
-    const contenedor = document.getElementById('historia-texto');
-    
-    if (!contenedor) return;
-
-    // 1. Detener si ya está hablando
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      boton.innerHTML = '<span>Écouter</span>';
-      return;
-    }
-
-    // 2. Tomar el texto que está visible en pantalla (ya sabemos que está en francés)
-    const textoFrances = contenedor.innerText.trim();
-    if (!textoFrances) return;
-
-    // 3. Redibujar el texto en "spans" para el karaoke
-    contenedor.innerHTML = '';
-    const palabras = textoFrances.split(' ');
-    palabras.forEach((palabra, index) => {
-      const span = document.createElement('span');
-      span.innerText = palabra + ' ';
-      span.id = `palabra-${index}`;
-      span.style.transition = 'background-color 0.2s, color 0.2s';
-      contenedor.appendChild(span);
-    });
-
-    // 4. Configurar la voz
-    const utterance = new SpeechSynthesisUtterance(textoFrances);
-    utterance.lang = 'fr-FR';
-    
-    const botonVelocidad = document.querySelector('.speed-button.is-selected');
-    utterance.rate = botonVelocidad ? parseFloat(botonVelocidad.getAttribute('data-rate')) : 1.0;
-
-    // 5. Efecto Karaoke (sombreado)
-    utterance.onboundary = (event) => {
-      if (event.name === 'word') {
-        const charIndex = event.charIndex;
-        const textoHastaAqui = textoFrances.substring(0, charIndex);
-        const numeroPalabra = textoHastaAqui.split(' ').length - 1;
-
-        document.querySelectorAll('#historia-texto span').forEach(span => {
-          span.style.backgroundColor = 'transparent';
-          span.style.color = 'inherit';
-          span.style.fontWeight = 'normal';
-        });
-
-        const palabraActual = document.getElementById(`palabra-${numeroPalabra}`);
-        if (palabraActual) {
-          palabraActual.style.backgroundColor = '#e8f0e8';
-          palabraActual.style.color = '#1e4d2b';
-          palabraActual.style.fontWeight = 'bold';
-        }
-      }
-    };
-
-    // 6. Restaurar botón al terminar
-    utterance.addEventListener("end", () => {
-      boton.innerHTML = '<span>Écouter</span>';
-    });
-    utterance.addEventListener("error", () => {
-      boton.innerHTML = '<span>Écouter</span>';
-    });
-
-    // 7. Cambiar botón y reproducir
-    boton.innerHTML = '<span>Arrêter</span>';
-    window.speechSynthesis.speak(utterance);
-  }
 });
