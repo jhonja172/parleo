@@ -141,7 +141,6 @@ const formStatus = document.querySelector("#form-status");
 const libraryStatus = document.querySelector("#library-status");
 const retryShortStoryButton = document.querySelector("#retry-short-story-button");
 const storyList = document.querySelector("#story-list");
-const julieView = document.querySelector("#julie-view");
 const buildStoryContext = document.querySelector("#build-story-context");
 const studentSummary = document.querySelector("#student-summary");
 const evaluateSummaryButton = document.querySelector("#evaluate-summary-button");
@@ -1325,13 +1324,8 @@ function setMainTab(selectedTab) {
 }
 
 function setPrimaryView(viewId) {
-  if (viewId !== "julie-view") {
-    activePronunciationPractice = null;
-    julieChatHistory
-      .querySelectorAll(".julie-pronunciation-target.is-practicing")
-      .forEach((element) => element.classList.remove("is-practicing"));
-    stopJulieRecognition();
-    stopJulieSpeech();
+  if (viewId === "julie-view") {
+    return;
   }
 
   if (viewId === "build-view") {
@@ -1829,7 +1823,12 @@ async function sendJulieMessage(message) {
       julieMessage.value = "";
     }
     julieChatStatus.textContent = "";
-    if (!julieView.hidden) {
+    const julieSection = julieChatForm.closest("#julie-view");
+    if (
+      julieSection &&
+      !julieSection.hidden &&
+      getComputedStyle(julieSection).display !== "none"
+    ) {
       await speakJulieReply(response.reply);
     }
   } catch (error) {
